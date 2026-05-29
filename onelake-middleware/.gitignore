@@ -1,0 +1,5 @@
+node_modules/
+*.log
+data_cache*.json
+.env
+debug_graphql.js

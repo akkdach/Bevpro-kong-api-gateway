@@ -1,0 +1,14 @@
+{
+  "name": "kong-log-receiver",
+  "version": "1.0.0",
+  "description": "Async Log Receiver for Kong API Gateway — Batch inserts to PostgreSQL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  }
+}

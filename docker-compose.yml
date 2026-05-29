@@ -1,0 +1,175 @@
+networks:
+  kong-net:
+    driver: bridge
+
+services:
+  # ─────────────────────────────────────────────
+  # 🗄️ PostgreSQL — เก็บ Config ของ Kong + API Logs
+  # ─────────────────────────────────────────────
+  kong-database:
+    image: postgres:15-alpine
+    container_name: kong-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kong_secure_password
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d  # Auto-run SQL schema on first start
+    ports:
+      - "5432:5432"
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # 🛠️ Kong Migrations — สร้าง Schema ของ Kong (run once)
+  # ─────────────────────────────────────────────
+  kong-migrations:
+    image: kong:3.5
+    container_name: kong-migrations
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_secure_password
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    command: kong migrations bootstrap
+    networks:
+      - kong-net
+    restart: on-failure
+
+  # ─────────────────────────────────────────────
+  # 🎛️ Kong API Gateway
+  # ─────────────────────────────────────────────
+  kong:
+    image: kong:3.5
+    container_name: kong-gateway
+    restart: unless-stopped
+    environment:
+      # Database
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_secure_password
+
+      # Listener Ports
+      KONG_PROXY_LISTEN: "0.0.0.0:80, 0.0.0.0:443 ssl"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+
+      # Kong Manager OSS (Built-in Dashboard)
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_GUI_URL: "http://localhost:8002"
+
+      # ─── High Performance Tuning ───
+      KONG_NGINX_DAEMON: "off"
+      KONG_NGINX_WORKER_PROCESSES: "auto"           # Match CPU cores (4)
+      KONG_NGINX_WORKER_CONNECTIONS: "10240"         # 10K connections per worker
+      KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"  # Reuse upstream connections
+      KONG_UPSTREAM_KEEPALIVE_TIMEOUT: "60"          # Keep-alive timeout (seconds)
+
+      # Logging
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
+    ports:
+      - "80:80"        # HTTP Proxy
+      - "443:443"      # HTTPS Proxy
+      - "8001:8001"    # Admin API (ควรปิดกั้น Firewall จากภายนอก)
+      - "8002:8002"    # Kong Manager Web UI
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # 📊 Konga Dashboard (Community UI)
+  # ─────────────────────────────────────────────
+  konga:
+    image: pantsel/konga:latest
+    container_name: konga-dashboard
+    restart: unless-stopped
+    environment:
+      PORT: "1337"
+      NODE_ENV: production
+      TOKEN_SECRET: konga_jwt_secret_token
+    ports:
+      - "1337:1337"    # Konga Dashboard
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  # ─────────────────────────────────────────────
+  # 🔌 Log Receiver — Async Log Pipeline (Node.js)
+  # ─────────────────────────────────────────────
+  log-receiver:
+    build: ./log-receiver
+    container_name: log-receiver
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://kong:kong_secure_password@kong-database:5432/kong
+      PORT: "3001"
+      BATCH_SIZE: "100"
+      FLUSH_INTERVAL_MS: "5000"
+    ports:
+      - "3001:3001"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  # ═════════════════════════════════════════════
+  # 🖥️ OneLake Middleware — Backend API Service
+  # ═════════════════════════════════════════════
+  # Middleware ที่เชื่อมต่อ Fabric OneLake, SQL Server, GraphQL
+  # Traffic ทั้งหมดจะเข้าผ่าน Kong Gateway (Port 80)
+  # ไม่ expose port 3005 ออกภายนอก → เข้าได้เฉพาะผ่าน Kong เท่านั้น
+  # ─────────────────────────────────────────────
+  onelake-middleware:
+    build:
+      context: ./onelake-middleware
+      dockerfile: Dockerfile
+    container_name: onelake-middleware-backend
+    restart: unless-stopped
+    env_file:
+      - ./onelake-middleware/.env
+    environment:
+      - NODE_ENV=production
+    # Log จะอยู่ภายใน container — ดูผ่าน: docker compose logs onelake-middleware
+    # หรือ: docker exec onelake-middleware-backend cat /app/server_debug.log
+    # ไม่ expose port ออกนอก — เข้าผ่าน Kong Gateway เท่านั้น
+    # ถ้าต้องการเข้าตรง (debug) ให้เปิด comment ด้านล่าง:
+    # ports:
+    #   - "3005:3005"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  kong_data:

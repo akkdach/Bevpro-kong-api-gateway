@@ -1,0 +1,30 @@
+{
+  "name": "onelake-middleware",
+  "version": "1.0.12",
+  "description": "Middleware for connecting to Fabric OneLake SQL Endpoint",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.2.0",
+    "@azure/storage-file-datalake": "^12.28.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "graphql": "^16.12.0",
+    "graphql-request": "^7.4.0",
+    "hyparquet": "^1.23.3",
+    "isomorphic-fetch": "^3.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.0.1",
+    "mssql": "^10.0.2",
+    "node-cron": "^4.2.1",
+    "parquetjs": "^0.11.2",
+    "snappyjs": "^0.7.0",
+    "swagger-ui-express": "^5.0.1",
+    "tesseract.js": "^7.0.0"
+  }
+}

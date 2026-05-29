@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment files (sensitive!)
+.env
+!.env.example
+
+# Logs
+*.log
+
+# Docker data
+kong_data/
+
+# Cache files
+data_cache_*.json
+
+# Build artifacts
+*.tar
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Tesseract training data
+*.traineddata

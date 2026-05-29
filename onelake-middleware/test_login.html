@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>Entra ID Login Test</title>
+    <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .container { background: #16213e; border-radius: 16px; padding: 40px; max-width: 600px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        h1 { color: #0078d4; margin-bottom: 8px; font-size: 24px; }
+        p.sub { color: #888; margin-bottom: 24px; font-size: 14px; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 4px; transition: all 0.2s; }
+        .btn-login { background: #0078d4; color: white; }
+        .btn-login:hover { background: #106ebe; transform: translateY(-1px); }
+        .btn-test { background: #107c10; color: white; }
+        .btn-test:hover { background: #0e6b0e; }
+        .btn-me { background: #5c2d91; color: white; }
+        .btn-me:hover { background: #4b2379; }
+        .btn-bom { background: #d83b01; color: white; }
+        .btn-bom:hover { background: #c43501; }
+        .result { background: #0d1b2a; border: 1px solid #334; border-radius: 8px; padding: 16px; margin-top: 16px; font-family: 'Consolas', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; display: none; }
+        .status { margin-top: 12px; padding: 8px 16px; border-radius: 6px; font-size: 14px; display: none; }
+        .status.success { display: block; background: #0d3320; border: 1px solid #107c10; color: #6ccf6c; }
+        .status.error { display: block; background: #330d0d; border: 1px solid #d83b01; color: #ff6b6b; }
+        .buttons { margin-top: 16px; }
+        .user-info { background: #1a3a5c; border-radius: 8px; padding: 16px; margin-top: 16px; display: none; }
+        .user-info h3 { color: #0078d4; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Entra ID Login Test</h1>
+        <p class="sub">ทดสอบระบบ Login ด้วย Microsoft Entra ID → ออก JWT</p>
+
+        <button class="btn-login" onclick="login()">🔑 Login ด้วย Microsoft</button>
+
+        <div class="user-info" id="userInfo">
+            <h3>👤 ข้อมูลผู้ใช้จาก Microsoft</h3>
+            <div id="userDetails"></div>
+        </div>
+
+        <div class="buttons" id="testButtons" style="display:none;">
+            <button class="btn-test" onclick="callLogin()">📤 ส่งไป POST /api/auth/login</button>
+            <button class="btn-me" onclick="callMe()">👤 GET /api/auth/me</button>
+            <button class="btn-bom" onclick="callBom()">📦 GET /api/bom-referbush</button>
+        </div>
+
+        <div class="status" id="status"></div>
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3005';
+
+        // MSAL Configuration
+        const msalConfig = {
+            auth: {
+                clientId: '9193c4ca-dd42-424d-8cd4-4c9bf87de0ae',
+                authority: 'https://login.microsoftonline.com/bd887fc9-1f27-4bff-9076-fc752a54cfaf',
+                redirectUri: window.location.origin
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        let entraToken = null;
+        let internalJwt = null;
+
+        // Step 1: Login with Microsoft
+        async function login() {
+            try {
+                showStatus('กำลังเปิดหน้า Login Microsoft...', 'success');
+                const response = await msalInstance.loginPopup({
+                    scopes: ['openid', 'profile', 'email']
+                });
+
+                entraToken = response.idToken;
+
+                document.getElementById('userInfo').style.display = 'block';
+                document.getElementById('userDetails').innerHTML =
+                    `ชื่อ: <strong>${response.account.name}</strong><br>` +
+                    `อีเมล: <strong>${response.account.username}</strong>`;
+
+                document.getElementById('testButtons').style.display = 'block';
+                showStatus('✅ Login Microsoft สำเร็จ! กดปุ่มด้านล่างเพื่อทดสอบ API', 'success');
+                showResult('Entra Token (ตัดสั้น):\n' + entraToken.substring(0, 100) + '...');
+            } catch (error) {
+                showStatus('❌ Login ล้มเหลว: ' + error.message, 'error');
+            }
+        }
+
+        // Step 2: Send Entra Token to our backend → get internal JWT
+        async function callLogin() {
+            try {
+                showStatus('กำลังส่ง Entra Token ไป POST /api/auth/login...', 'success');
+
+                const res = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: entraToken })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    internalJwt = data.token;
+                    showStatus(`✅ ได้ JWT กลับมา! ชื่อ: ${data.user.name}, อีเมล: ${data.user.email}`, 'success');
+                    showResult(JSON.stringify(data, null, 2));
+                } else {
+                    showStatus('❌ Login API Error: ' + (data.error || data.details), 'error');
+                    showResult(JSON.stringify(data, null, 2));
+                }
+            } catch (error) {
+                showStatus('❌ Network Error: ' + error.message, 'error');
+            }
+        }
+
+        // Step 3: Test GET /api/auth/me with internal JWT
+        async function callMe() {
+            if (!internalJwt) return showStatus('⚠️ ต้องกดปุ่ม "ส่งไป POST /api/auth/login" ก่อน!', 'error');
+
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${internalJwt}` }
+                });
+                const data = await res.json();
+                showStatus(res.ok ? '✅ ดึงข้อมูลผู้ใช้สำเร็จ!' : '❌ Error', res.ok ? 'success' : 'error');
+                showResult(JSON.stringify(data, null, 2));
+            } catch (error) {
+                showStatus('❌ ' + error.message, 'error');
+            }
+        }
+
+        // Step 4: Test GET /api/bom-referbush with internal JWT
+        async function callBom() {
+            if (!internalJwt) return showStatus('⚠️ ต้องกดปุ่ม "ส่งไป POST /api/auth/login" ก่อน!', 'error');
+
+            try {
+                showStatus('กำลังดึงข้อมูล BOM_Referbush...', 'success');
+                const res = await fetch(`${API_BASE}/api/bom-referbush`, {
+                    headers: { 'Authorization': `Bearer ${internalJwt}` }
+                });
+                const data = await res.json();
+                showStatus(res.ok ? `✅ ได้ข้อมูล BOM ${data.total} แถว!` : '❌ Error', res.ok ? 'success' : 'error');
+                showResult(JSON.stringify(data, null, 2));
+            } catch (error) {
+                showStatus('❌ ' + error.message, 'error');
+            }
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = 'status ' + type;
+        }
+
+        function showResult(text) {
+            const el = document.getElementById('result');
+            el.textContent = text;
+            el.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

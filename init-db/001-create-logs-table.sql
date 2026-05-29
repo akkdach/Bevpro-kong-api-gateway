@@ -1,0 +1,32 @@
+-- =====================================================
+-- Kong API Logs Table — Auto-created on first DB start
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS kong_api_logs (
+    id                  SERIAL PRIMARY KEY,
+    request_id          VARCHAR(50) UNIQUE,
+    client_ip           VARCHAR(45),
+    method              VARCHAR(10),
+    path                TEXT,
+    status_code         INT,
+    latency_ms          INT,
+    consumer_username   VARCHAR(100),
+    user_agent          TEXT,
+    request_body        TEXT,
+    response_size       INT,
+    service_name        VARCHAR(100),
+    route_name          VARCHAR(100),
+    request_time        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for fast querying
+CREATE INDEX IF NOT EXISTS idx_kong_logs_request_time ON kong_api_logs(request_time);
+CREATE INDEX IF NOT EXISTS idx_kong_logs_status_code  ON kong_api_logs(status_code);
+CREATE INDEX IF NOT EXISTS idx_kong_logs_consumer      ON kong_api_logs(consumer_username);
+CREATE INDEX IF NOT EXISTS idx_kong_logs_path          ON kong_api_logs(path);
+
+-- =====================================================
+-- Auto-cleanup: Partition-like cleanup for old logs
+-- (Optional: run as cron or scheduled task)
+-- =====================================================
+-- DELETE FROM kong_api_logs WHERE request_time < NOW() - INTERVAL '90 days';
