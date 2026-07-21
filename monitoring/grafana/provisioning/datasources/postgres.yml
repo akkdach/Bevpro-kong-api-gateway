@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: KongLogs
+    uid: konglogs        # dashboard อ้างถึงค่านี้
+    type: postgres
+    access: proxy
+    url: kong-database:5432
+    user: kong
+    database: kong
+    secureJsonData:
+      password: kong_secure_password
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+      timescaledb: false
+    editable: false

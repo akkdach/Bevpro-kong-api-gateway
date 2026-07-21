@@ -1,0 +1,97 @@
+{
+  "uid": "kong-traffic-logs",
+  "title": "Kong — Traffic & Logs",
+  "tags": ["kong", "traffic", "logs"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Total Req/s (now)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [ { "refId": "A", "expr": "sum(rate(kong_http_requests_total[1m]))", "instant": true } ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Requests (in range)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) AS requests FROM kong_api_logs WHERE $__timeFilter(request_time)" } ],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Errors 4xx/5xx (in range)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) AS errors FROM kong_api_logs WHERE status_code >= 400 AND $__timeFilter(request_time)" } ],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Avg Latency (ms, in range)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT round(avg(latency_ms)) AS avg_ms FROM kong_api_logs WHERE $__timeFilter(request_time)" } ],
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 500 } ] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+
+    {
+      "id": 10, "type": "timeseries", "title": "Requests/sec by Consumer (live metrics)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [ { "refId": "A", "expr": "sum by (consumer) (rate(kong_http_requests_total[$__rate_interval]))", "legendFormat": "{{consumer}}" } ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Requests/sec by Status Code (live metrics)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [ { "refId": "A", "expr": "sum by (code) (rate(kong_http_requests_total[$__rate_interval]))", "legendFormat": "{{code}}" } ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "401" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } } ] },
+          { "matcher": { "id": "byRegexp", "options": "5.." }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean"] } }
+    },
+
+    {
+      "id": 20, "type": "timeseries", "title": "Requests over time (from logs)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "rawSql": "SELECT $__timeGroupAlias(request_time,'1m'), count(*) AS requests FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1" } ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "drawStyle": "bars" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 21, "type": "table", "title": "Requests by Path (from logs)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT path, count(*) AS hits, round(avg(latency_ms)) AS avg_ms, max(status_code) AS last_status FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY path ORDER BY hits DESC LIMIT 30" } ],
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "hits", "desc": true } ] }
+    },
+
+    {
+      "id": 30, "type": "table", "title": "Recent Requests (live log)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 20 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "rawSql": "SELECT request_time AS \"time\", consumer_username, method, path, status_code, latency_ms, client_ip FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY id DESC LIMIT 100" } ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "status_code" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 400 }, { "color": "red", "value": 500 } ] } } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "time", "desc": true } ] }
+    }
+  ]
+}

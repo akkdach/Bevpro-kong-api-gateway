@@ -1,0 +1,116 @@
+#!/bin/sh
+# =====================================================
+# kong-init.sh — ตั้งค่า Kong อัตโนมัติตอน stack start
+# รันโดย service "kong-setup" (image curlimages/curl) ในตัว stack
+# ยิง Admin API ผ่าน docker network: http://kong-gateway:8001
+# รันซ้ำได้ (idempotent): PUT สำหรับ services/routes,
+# check-then-POST สำหรับ plugins/credentials
+# JWT_SECRET / JWT_ISSUER มาจาก env_file (onelake-middleware/.env)
+#
+# 21 ก.ค. 2026 — เปลี่ยนจาก route เดียว /api ครอบทุกอย่าง
+# มาเป็น "1 route ต่อ 1 endpoint" (allowlist):
+#   - path ที่ไม่ได้ประกาศไว้ โดน 404 ที่ Kong ไม่ถึง backend
+#   - JWT plugin แปะรายเส้น เฉพาะเส้นที่ Swagger บอกว่าต้อง auth
+#   - จำกัด method รายเส้น (POST ไปที่ endpoint GET = 404 ที่ Kong)
+# =====================================================
+
+ADMIN="http://kong-gateway:8001"
+ISSUER="${JWT_ISSUER:-onelake-app}"
+# upstream ของ onelake-middleware — ชี้ไป Azure App Service (backend จริง)
+# override ได้ผ่าน env ONELAKE_UPSTREAM_URL
+UPSTREAM="${ONELAKE_UPSTREAM_URL:-https://onelake-middleware-hth2cxh5hfhwdxhs.southeastasia-01.azurewebsites.net}"
+
+echo "kong-setup: waiting for Kong Admin API..."
+i=0
+while [ "$i" -lt 40 ]; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$ADMIN/status" 2>/dev/null || echo 000)
+  [ "$code" = "200" ] && break
+  i=$((i+1)); sleep 2
+done
+if [ "$code" != "200" ]; then echo "kong-setup: Kong not reachable, abort"; exit 1; fi
+echo "kong-setup: Kong ready"
+
+# ─── SERVICES (PUT = idempotent) ───
+echo "[Services]"
+curl -s -o /dev/null -w "  onelake-middleware -> %{http_code}\n" -X PUT "$ADMIN/services/onelake-middleware" --data-urlencode "url=$UPSTREAM" --data "connect_timeout=10000" --data "read_timeout=120000" --data "write_timeout=120000"
+# main-api (:5000) / safety-api (:5174) ถูกลบออกเมื่อ 21 ก.ค. 2026
+# — ไม่มีอะไรรันที่พอร์ตนั้นบน VM นี้ ทุก request ตอบ 503
+# ถ้าจะเอากลับมา ให้ uncomment ทั้งบล็อกนี้และเพิ่ม route ของมันเอง
+# curl -s -o /dev/null -w "  main-api -> %{http_code}\n" -X PUT "$ADMIN/services/main-api" --data "url=http://host.docker.internal:5000" --data "connect_timeout=10000" --data "read_timeout=60000" --data "write_timeout=60000"
+# curl -s -o /dev/null -w "  safety-api -> %{http_code}\n" -X PUT "$ADMIN/services/safety-api" --data "url=http://host.docker.internal:5174" --data "connect_timeout=10000" --data "read_timeout=60000" --data "write_timeout=60000"
+
+# ─── ลบ route แบบเก่าที่เลิกใช้แล้ว ───
+# middleware-api-route  = catch-all /api (ปล่อย path มั่วผ่านไป backend)
+# middleware-sync-route = /api/sync ที่ไม่มีอยู่ใน API แล้ว
+echo "[Retired routes]"
+for r in middleware-api-route middleware-sync-route; do
+  curl -s -o /dev/null -w "  DELETE $r -> %{http_code}\n" -X DELETE "$ADMIN/routes/$r"
+done
+
+# ─── ROUTES: 1 เส้นต่อ 1 endpoint (nested PUT = idempotent) ───
+# หมายเหตุ OPTIONS: ต้องใส่ทุกเส้นที่เบราว์เซอร์เรียก ไม่งั้น CORS preflight
+# จะไม่ match route แล้วโดน 404 ก่อนที่ cors plugin จะได้ทำงาน
+echo "[Routes: public]"
+curl -s -o /dev/null -w "  health -> %{http_code}\n" -X PUT "$ADMIN/services/onelake-middleware/routes/middleware-health-route" --data "paths[]=/health" --data "strip_path=true"
+curl -s -o /dev/null -w "  api-docs -> %{http_code}\n" -X PUT "$ADMIN/services/onelake-middleware/routes/middleware-docs-route" --data "paths[]=/api-docs" --data "strip_path=false"
+curl -s -o /dev/null -w "  auth-login -> %{http_code}\n" -X PUT "$ADMIN/services/onelake-middleware/routes/middleware-auth-login-route" --data "paths[]=/api/auth/login" --data "strip_path=false" --data "methods[]=POST" --data "methods[]=OPTIONS"
+
+echo "[Routes: protected]"
+# ชื่อ route | path | method หลัก  (ทุกเส้นได้ OPTIONS เพิ่มให้อัตโนมัติ)
+put_route() {
+  name="$1"; path="$2"; method="$3"
+  curl -s -o /dev/null -w "  $name -> %{http_code}\n" \
+    -X PUT "$ADMIN/services/onelake-middleware/routes/$name" \
+    --data "paths[]=$path" --data "strip_path=false" \
+    --data "methods[]=$method" --data "methods[]=OPTIONS"
+}
+put_route middleware-auth-me-route        /api/auth/me            GET
+put_route middleware-orders-route         /api/orders             GET
+put_route middleware-income-route         /api/income             GET
+put_route middleware-baht-per-head-route  /api/baht-per-head      GET
+put_route middleware-dispatch-route       /api/dispatch-pending   GET
+put_route middleware-bom-referbush-route  /api/bom-referbush      GET
+put_route middleware-fsr-orders-route     /api/fsr-protal/orders  GET
+put_route middleware-service-header-route /api/service-header     GET
+# request-status รับ path parameter ต่อท้าย -> ใช้ prefix match
+put_route middleware-request-status-route /api/request-status     GET
+
+# ─── GLOBAL PLUGINS (check-then-POST) ───
+echo "[Global plugins]"
+if curl -s "$ADMIN/plugins" | grep -q '"name":"rate-limiting"'; then echo "  rate-limiting(global) exists"; else
+  curl -s -o /dev/null -w "  rate-limiting(global) -> %{http_code}\n" -X POST "$ADMIN/plugins" --data "name=rate-limiting" --data "config.minute=200" --data "config.hour=5000" --data "config.policy=local" --data "config.fault_tolerant=true" --data "config.hide_client_headers=false"; fi
+if curl -s "$ADMIN/plugins" | grep -q '"name":"http-log"'; then echo "  http-log exists"; else
+  curl -s -o /dev/null -w "  http-log -> %{http_code}\n" -X POST "$ADMIN/plugins" --data "name=http-log" --data "config.http_endpoint=http://log-receiver:3001/logs" --data "config.method=POST" --data "config.timeout=10000" --data "config.keepalive=60000"; fi
+if curl -s "$ADMIN/plugins" | grep -q '"name":"cors"'; then echo "  cors exists"; else
+  curl -s -o /dev/null -w "  cors -> %{http_code}\n" -X POST "$ADMIN/plugins" --data "name=cors" --data "config.origins[]=*" --data "config.methods[]=GET" --data "config.methods[]=POST" --data "config.methods[]=PUT" --data "config.methods[]=DELETE" --data "config.methods[]=PATCH" --data "config.methods[]=OPTIONS" --data "config.headers[]=Accept" --data "config.headers[]=Authorization" --data "config.headers[]=Content-Type" --data "config.credentials=true" --data "config.max_age=3600"; fi
+if curl -s "$ADMIN/plugins" | grep -q '"name":"prometheus"'; then echo "  prometheus exists"; else
+  curl -s -o /dev/null -w "  prometheus -> %{http_code}\n" -X POST "$ADMIN/plugins" --data "name=prometheus" --data "config.per_consumer=true" --data "config.status_code_metrics=true" --data "config.latency_metrics=true" --data "config.bandwidth_metrics=true" --data "config.upstream_health_metrics=true"; fi
+
+# ─── SCOPED PLUGINS (check-then-POST) ───
+echo "[Scoped plugins]"
+if curl -s "$ADMIN/services/onelake-middleware/plugins" | grep -q '"name":"request-size-limiting"'; then echo "  request-size-limiting exists"; else
+  curl -s -o /dev/null -w "  request-size-limiting -> %{http_code}\n" -X POST "$ADMIN/services/onelake-middleware/plugins" --data "name=request-size-limiting" --data "config.allowed_payload_size=100" --data "config.size_unit=megabytes"; fi
+
+# ─── CONSUMER + JWT CREDENTIAL ───
+echo "[Consumer]"
+curl -s -o /dev/null -w "  consumer $ISSUER -> %{http_code}\n" -X PUT "$ADMIN/consumers/$ISSUER" --data "custom_id=$ISSUER" --data "tags[]=app"
+if curl -s "$ADMIN/consumers/$ISSUER/jwt" | grep -q "\"key\":\"$ISSUER\""; then echo "  jwt credential exists"; else
+  if [ -z "$JWT_SECRET" ]; then echo "  WARN: JWT_SECRET empty — skip credential"; else
+    curl -s -o /dev/null -w "  jwt credential -> %{http_code}\n" -X POST "$ADMIN/consumers/$ISSUER/jwt" --data "key=$ISSUER" --data "algorithm=HS256" --data-urlencode "secret=$JWT_SECRET"; fi; fi
+
+# ─── JWT PLUGIN รายเส้น (check-then-POST) ───
+# แปะเฉพาะเส้นที่ Swagger ระบุว่าต้อง auth — /health, /api-docs, /api/auth/login ไม่แปะ
+echo "[JWT plugin per route]"
+for r in middleware-auth-me-route middleware-orders-route middleware-income-route \
+         middleware-baht-per-head-route middleware-dispatch-route \
+         middleware-bom-referbush-route middleware-fsr-orders-route \
+         middleware-service-header-route middleware-request-status-route; do
+  if curl -s "$ADMIN/routes/$r/plugins" | grep -q '"name":"jwt"'; then
+    echo "  jwt($r) exists"
+  else
+    curl -s -o /dev/null -w "  jwt($r) -> %{http_code}\n" -X POST "$ADMIN/routes/$r/plugins" \
+      --data "name=jwt" --data "config.key_claim_name=iss" --data "config.claims_to_verify[]=exp"
+  fi
+done
+
+echo "kong-setup: done"

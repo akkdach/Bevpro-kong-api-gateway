@@ -197,6 +197,70 @@ if [ -n "$SYNC_ROUTE_ID" ]; then
 fi
 
 # ═══════════════════════════════════════════════
+#  5. JWT CONSUMER + PROMETHEUS (Windows ใช้ setup-jwt-metrics.ps1 แทน)
+# ═══════════════════════════════════════════════
+# Consumer ต่อแอป — token ที่ middleware ออกต้องมี claim iss ตรงกับ key ด้านล่าง
+
+ENV_FILE="$(dirname "$0")/../onelake-middleware/.env"
+JWT_SECRET=$(grep '^JWT_SECRET=' "$ENV_FILE" | cut -d= -f2-)
+JWT_ISSUER=$(grep '^JWT_ISSUER=' "$ENV_FILE" | cut -d= -f2-)
+JWT_ISSUER=${JWT_ISSUER:-onelake-app}
+
+if [ -z "$JWT_SECRET" ]; then
+  echo "⚠️  JWT_SECRET not found in $ENV_FILE — skipping JWT setup"
+else
+  echo "📌 Creating Consumer: $JWT_ISSUER..."
+  curl -s -X PUT "$KONG_ADMIN/consumers/$JWT_ISSUER" \
+    --data "custom_id=$JWT_ISSUER" \
+    --data "tags[]=app" > /dev/null && echo "(ok)"
+
+  echo "📌 Creating JWT credential (key=$JWT_ISSUER, HS256)..."
+  HAS_CRED=$(curl -s "$KONG_ADMIN/consumers/$JWT_ISSUER/jwt" | python3 -c "import sys,json; print(any(c.get('key')=='$JWT_ISSUER' for c in json.load(sys.stdin).get('data',[])))" 2>/dev/null)
+  if [ "$HAS_CRED" = "True" ]; then
+    echo "(credential exists — skip)"
+  else
+    curl -s -X POST "$KONG_ADMIN/consumers/$JWT_ISSUER/jwt" \
+      --data "key=$JWT_ISSUER" \
+      --data "algorithm=HS256" \
+      --data-urlencode "secret=$JWT_SECRET" > /dev/null && echo "(created)"
+  fi
+
+  # Routes ยกเว้น JWT — path ยาวกว่า /api จึงชนะตาม router ของ Kong
+  echo "📌 Creating exception routes (no JWT)..."
+  curl -s -X PUT "$KONG_ADMIN/services/onelake-middleware/routes/middleware-auth-login-route" \
+    --data "paths[]=/api/auth/login" --data "strip_path=false" > /dev/null && echo "(login route ok)"
+  curl -s -X PUT "$KONG_ADMIN/services/onelake-middleware/routes/middleware-request-status-route" \
+    --data "paths[]=/api/request-status" --data "strip_path=false" > /dev/null && echo "(request-status route ok)"
+
+  echo "📌 Enabling JWT Plugin on /api route..."
+  HAS_JWT=$(curl -s "$KONG_ADMIN/routes/middleware-api-route/plugins" | python3 -c "import sys,json; print(any(p.get('name')=='jwt' for p in json.load(sys.stdin).get('data',[])))" 2>/dev/null)
+  if [ "$HAS_JWT" = "True" ]; then
+    echo "(jwt plugin exists — skip)"
+  else
+    curl -s -X POST "$KONG_ADMIN/routes/middleware-api-route/plugins" \
+      --data "name=jwt" \
+      --data "config.key_claim_name=iss" \
+      --data "config.claims_to_verify[]=exp" > /dev/null && echo "(enabled)"
+  fi
+fi
+
+echo "📌 Enabling Prometheus Plugin (global, per-consumer metrics)..."
+# OSS ไม่รองรับ ?name= filter บน /plugins — กรองด้วยชื่อฝั่ง client
+HAS_PROM=$(curl -s "$KONG_ADMIN/plugins" | python3 -c "import sys,json; print(any(p.get('name')=='prometheus' for p in json.load(sys.stdin).get('data',[])))" 2>/dev/null)
+if [ "$HAS_PROM" = "True" ]; then
+  echo "(prometheus plugin exists — skip)"
+else
+  curl -s -X POST "$KONG_ADMIN/plugins" \
+    --data "name=prometheus" \
+    --data "config.per_consumer=true" \
+    --data "config.status_code_metrics=true" \
+    --data "config.latency_metrics=true" \
+    --data "config.bandwidth_metrics=true" \
+    --data "config.upstream_health_metrics=true" > /dev/null && echo "(enabled)"
+fi
+echo ""
+
+# ═══════════════════════════════════════════════
 #  SUMMARY — แสดงผลลัพธ์ทั้งหมด
 # ═══════════════════════════════════════════════
 
@@ -210,6 +274,8 @@ echo "║   🔧 Admin API:        http://localhost:8001             ║"
 echo "║   📊 Kong Manager:     http://localhost:8002             ║"
 echo "║   📊 Konga Dashboard:  http://localhost:1337             ║"
 echo "║   🔌 Log Receiver:     http://localhost:3001             ║"
+echo "║   📈 Prometheus:       http://localhost:9090             ║"
+echo "║   📊 Grafana:          http://localhost:3000             ║"
 echo "║                                                         ║"
 echo "║   ── Registered Services ──                              ║"
 echo "║   🖥️  OneLake Middleware  → /api/*                       ║"

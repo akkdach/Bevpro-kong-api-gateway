@@ -1,0 +1,8 @@
+module.exports = [
+  {
+    "name": "kong-local",
+    "type": "default",
+    "kong_admin_url": "http://kong-gateway:8001",
+    "health_checks": false
+  }
+];

@@ -38,27 +38,69 @@ let logQueue = [];
 let totalReceived = 0;
 let totalFlushed = 0;
 let totalErrors = 0;
+let totalDropped = 0;
 let isShuttingDown = false;
+
+// ─── SQL ──────────────────────────────────────────
+const INSERT_SQL = `
+  INSERT INTO kong_api_logs
+    (request_id, client_ip, method, path, status_code, latency_ms,
+     consumer_username, user_agent, request_body, response_size,
+     service_name, route_name, request_time)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  ON CONFLICT (request_id) DO NOTHING
+`;
+
+function toParams(item) {
+  return [
+    item.request_id,
+    item.client_ip,
+    item.method,
+    item.path,
+    item.status_code,
+    item.latency_ms,
+    item.consumer_username,
+    item.user_agent,
+    item.request_body,
+    item.response_size,
+    item.service_name,
+    item.route_name,
+    item.request_time,
+  ];
+}
+
+// ─── Sanitize ─────────────────────────────────────
+// Bot สแกนช่องโหว่ส่ง NUL byte (0x00) มาใน path/user-agent เป็นประจำ
+// PostgreSQL ปฏิเสธทั้ง transaction → batch พังถาวรถ้าไม่ล้างทิ้งก่อน
+// ตัดความยาวตาม limit ของคอลัมน์ด้วย กัน error แบบเดียวกันจาก field ยาวเกิน
+function clean(value, maxLen) {
+  if (value === null || value === undefined) return null;
+  let s = String(value).replace(/\u0000/g, "");
+  if (maxLen && s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
 
 // ─── Parse Kong Log Entry ─────────────────────────
 function parseKongLog(log) {
   try {
     return {
-      request_id:
+      request_id: clean(
         log.request?.headers?.["kong-request-id"] ||
-        log.tries?.[0]?.id ||
-        `auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      client_ip: log.client_ip || "unknown",
-      method: log.request?.method || "UNKNOWN",
-      path: log.request?.uri || "/",
+          log.tries?.[0]?.id ||
+          `auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        50
+      ),
+      client_ip: clean(log.client_ip || "unknown", 45),
+      method: clean(log.request?.method || "UNKNOWN", 10),
+      path: clean(log.request?.uri || "/"),
       status_code: log.response?.status || 0,
       latency_ms: log.latencies?.request || 0,
-      consumer_username: log.consumer?.username || "anonymous",
-      user_agent: log.request?.headers?.["user-agent"] || "",
+      consumer_username: clean(log.consumer?.username || "anonymous", 100),
+      user_agent: clean(log.request?.headers?.["user-agent"] || ""),
       request_body: null, // ไม่เก็บ body เพื่อประหยัดพื้นที่
       response_size: log.response?.size || 0,
-      service_name: log.service?.name || null,
-      route_name: log.route?.name || null,
+      service_name: clean(log.service?.name || null, 100),
+      route_name: clean(log.route?.name || null, 100),
       request_time: log.started_at
         ? new Date(log.started_at)
         : new Date(),
@@ -85,31 +127,8 @@ async function flushLogs() {
   try {
     await client.query("BEGIN");
 
-    const insertSQL = `
-      INSERT INTO kong_api_logs 
-        (request_id, client_ip, method, path, status_code, latency_ms, 
-         consumer_username, user_agent, request_body, response_size,
-         service_name, route_name, request_time) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
-      ON CONFLICT (request_id) DO NOTHING
-    `;
-
     for (const item of workingQueue) {
-      await client.query(insertSQL, [
-        item.request_id,
-        item.client_ip,
-        item.method,
-        item.path,
-        item.status_code,
-        item.latency_ms,
-        item.consumer_username,
-        item.user_agent,
-        item.request_body,
-        item.response_size,
-        item.service_name,
-        item.route_name,
-        item.request_time,
-      ]);
+      await client.query(INSERT_SQL, toParams(item));
     }
 
     await client.query("COMMIT");
@@ -122,17 +141,38 @@ async function flushLogs() {
     totalErrors++;
     console.error(`❌ Batch insert failed: ${err.message}`);
 
-    // Re-queue failed logs for retry (with size limit)
-    if (logQueue.length + workingQueue.length <= MAX_QUEUE_SIZE) {
-      logQueue = [...workingQueue, ...logQueue];
-      console.log(`🔄 Re-queued ${batchSize} logs for retry`);
-    } else {
-      console.error(
-        `⚠️ Queue overflow! Dropping ${batchSize} logs to prevent OOM`
-      );
-    }
+    // ห้าม re-queue ทั้ง batch — ถ้าเสียเพราะแถวใดแถวหนึ่ง (poison row)
+    // การ retry ชุดเดิมจะพังซ้ำตลอดไป และ log ใหม่ทุกอันจะค้างอยู่หลังมัน
+    // แทรกทีละแถวแทน: แถวดีเข้าได้หมด เหลือเฉพาะแถวเสียที่ถูกทิ้ง
+    await insertRowByRow(workingQueue);
   } finally {
     client.release();
+  }
+}
+
+// ─── Fallback: แทรกทีละแถว เพื่อคัดแถวเสียออก ──────
+async function insertRowByRow(rows) {
+  let ok = 0;
+  const dropped = [];
+
+  for (const item of rows) {
+    const client = await pool.connect();
+    try {
+      await client.query(INSERT_SQL, toParams(item));
+      ok++;
+    } catch (err) {
+      dropped.push({ path: item.path, reason: err.message });
+    } finally {
+      client.release();
+    }
+  }
+
+  totalFlushed += ok;
+  totalDropped += dropped.length;
+  console.log(`🩹 Row-by-row recovery: ${ok} เข้าแล้ว, ${dropped.length} ถูกทิ้ง`);
+
+  for (const d of dropped.slice(0, 5)) {
+    console.error(`   ↳ ทิ้ง path=${d.path} เพราะ: ${d.reason}`);
   }
 }
 
@@ -179,6 +219,7 @@ app.get("/health", async (req, res) => {
       total_received: totalReceived,
       total_flushed: totalFlushed,
       total_errors: totalErrors,
+      total_dropped: totalDropped,
       uptime_seconds: Math.floor(process.uptime()),
     });
   } catch (err) {
@@ -196,6 +237,7 @@ app.get("/stats", (req, res) => {
     total_received: totalReceived,
     total_flushed: totalFlushed,
     total_errors: totalErrors,
+    total_dropped: totalDropped,
     config: {
       batch_size: BATCH_SIZE,
       flush_interval_ms: FLUSH_INTERVAL_MS,

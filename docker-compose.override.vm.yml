@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════════════════════════
+# Override สำหรับ Azure VM "WebApplication-kong-gateway" (Standard_B2ls_v2 — 2 vCPU / 3.8GB RAM)
+# ไฟล์นี้ถูก deploy อยู่ที่: /home/adminwebapp/kong/docker-compose.override.yml (ชื่อบน VM ไม่มี .vm)
+# docker compose จะรวมไฟล์ชื่อ docker-compose.override.yml กับ docker-compose.yml ให้อัตโนมัติ
+# ถ้าแก้ไฟล์นี้ ให้ copy ขึ้น VM แล้วรัน: docker compose up -d
+# ═══════════════════════════════════════════════════════════════
+services:
+  kong:
+    environment:
+      KONG_NGINX_WORKER_PROCESSES: "2"   # fix เท่าจำนวน core (กัน resize VM แล้ว auto เปิด worker เพิ่มจนกิน RAM)
+      KONG_MEM_CACHE_SIZE: "128m"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  kong-database:
+    command: postgres -c shared_buffers=256MB -c effective_cache_size=512MB
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  konga:
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  log-receiver:
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=128"
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  prometheus:
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=2GB"   # กันดิสก์เต็ม — อันไหนถึงก่อนใช้อันนั้น
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  grafana:
+    deploy:
+      resources:
+        limits:
+          memory: 384M

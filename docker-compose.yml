@@ -14,13 +14,23 @@ services:
       POSTGRES_USER: kong
       POSTGRES_DB: kong
       POSTGRES_PASSWORD: kong_secure_password
+    # จูนให้พอดี VM 4C/16GB — Postgres ตัวนี้เก็บแค่ config Kong + api logs
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+      -c maintenance_work_mem=128MB
     volumes:
       - kong_data:/var/lib/postgresql/data
       - ./init-db:/docker-entrypoint-initdb.d  # Auto-run SQL schema on first start
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # loopback เท่านั้น — ต่อจากเครื่องนอกให้ใช้ SSH tunnel
     networks:
       - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kong"]
       interval: 10s
@@ -65,13 +75,21 @@ services:
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
 
       # Kong Manager OSS (Built-in Dashboard)
+      # บน Azure VM: ตั้งใน .env → KONG_ADMIN_GUI_URL=http://<VM-PUBLIC-IP>:8002
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
-      KONG_ADMIN_GUI_URL: "http://localhost:8002"
+      KONG_ADMIN_GUI_URL: "${KONG_ADMIN_GUI_URL:-http://localhost:8002}"
 
-      # ─── High Performance Tuning ───
+      # Status Listener — Prometheus scrape /metrics ที่ port นี้
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
+
+      # ─── Performance Tuning (VM 4C/16GB) ───
       KONG_NGINX_DAEMON: "off"
-      KONG_NGINX_WORKER_PROCESSES: "auto"           # Match CPU cores (4)
+      # ตั้ง explicit แทน "auto" — auto จะเปิด worker เท่าจำนวน core ของ host
+      # ซึ่งกิน RAM เพิ่มต่อ worker; 2 workers รองรับ ~400 users สบาย ๆ
+      # (VM 2 cores ก็ใช้ "2" / traffic โตมากค่อยขยับ "4")
+      KONG_NGINX_WORKER_PROCESSES: "2"
       KONG_NGINX_WORKER_CONNECTIONS: "10240"         # 10K connections per worker
+      KONG_MEM_CACHE_SIZE: "256m"                    # shared cache สำหรับ entities/config (แชร์ทุก worker)
       KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"  # Reuse upstream connections
       KONG_UPSTREAM_KEEPALIVE_TIMEOUT: "60"          # Keep-alive timeout (seconds)
 
@@ -90,6 +108,7 @@ services:
       - "443:443"      # HTTPS Proxy
       - "8001:8001"    # Admin API (ควรปิดกั้น Firewall จากภายนอก)
       - "8002:8002"    # Kong Manager Web UI
+      - "127.0.0.1:8100:8100"  # Status/Metrics (loopback เท่านั้น — สำหรับ debug จาก host)
     networks:
       - kong-net
     healthcheck:
@@ -97,6 +116,10 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   # ─────────────────────────────────────────────
   # 📊 Konga Dashboard (Community UI)
@@ -109,13 +132,28 @@ services:
       PORT: "1337"
       NODE_ENV: production
       TOKEN_SECRET: konga_jwt_secret_token
+      # หมายเหตุ: Konga ใช้ postgres เป็น backend ไม่ได้กับ PG12+ (sails-postgresql เก่า
+      # query คอลัมน์ pg_attrdef.adsrc ที่ถูกถอดออก) — ใช้ sails-disk + volume ถาวรแทน
+      # Seed admin user + Kong connection ตอน start ครั้งแรก
+      # (production mode ปิดหน้า register — ต้องสร้าง user ผ่าน seed เท่านั้น)
+      KONGA_SEED_USER_DATA_SOURCE_FILE: /app/seed/userdb.data
+      KONGA_SEED_KONG_NODE_DATA_SOURCE_FILE: /app/seed/kongnode.data
+    volumes:
+      - ./konga-seed:/app/seed:ro
+      - konga_data:/app/kongadata   # เก็บ users/connections ของ Konga (konga.db) ให้รอด recreate
     ports:
       - "1337:1337"    # Konga Dashboard
     depends_on:
       kong:
         condition: service_healthy
+      kong-database:
+        condition: service_healthy
     networks:
       - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # ─────────────────────────────────────────────
   # 🔌 Log Receiver — Async Log Pipeline (Node.js)
@@ -129,13 +167,18 @@ services:
       PORT: "3001"
       BATCH_SIZE: "100"
       FLUSH_INTERVAL_MS: "5000"
+      NODE_OPTIONS: "--max-old-space-size=192"  # จำกัด heap ให้ต่ำกว่า memory limit
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"  # Kong เรียกผ่าน docker network — host เปิดแค่ loopback ไว้เช็ค health
     depends_on:
       kong-database:
         condition: service_healthy
     networks:
       - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ═════════════════════════════════════════════
   # 🖥️ OneLake Middleware — Backend API Service
@@ -154,6 +197,7 @@ services:
       - ./onelake-middleware/.env
     environment:
       - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=768  # จำกัด heap ให้ต่ำกว่า memory limit (1G)
     # Log จะอยู่ภายใน container — ดูผ่าน: docker compose logs onelake-middleware
     # หรือ: docker exec onelake-middleware-backend cat /app/server_debug.log
     # ไม่ expose port ออกนอก — เข้าผ่าน Kong Gateway เท่านั้น
@@ -170,6 +214,65 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ─────────────────────────────────────────────
+  # 📈 Prometheus — เก็บ Metrics จาก Kong (Time-Series)
+  # ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.4
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=5GB"   # กันดิสก์ VM เต็ม — อันไหนถึงก่อนใช้อันนั้น
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ─────────────────────────────────────────────
+  # 📊 Grafana — Dashboard แสดงผล Metrics
+  # ─────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-ChangeMe_Grafana1}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 volumes:
   kong_data:
+  prometheus_data:
+  grafana_data:
+  konga_data:

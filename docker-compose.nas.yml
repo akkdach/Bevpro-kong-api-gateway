@@ -1,0 +1,192 @@
+networks:
+  kong-net:
+    driver: bridge
+
+# ═══════════════════════════════════════════════════════════════
+# เวอร์ชันสำหรับ Synology NAS (Container Manager → Project)
+# ต่างจาก docker-compose.yml หลักแค่ HOST PORT ของ Kong proxy:
+#   80  -> 8080   (เพราะ DSM ใช้ 80 อยู่แล้ว)
+#   443 -> 8443   (เพราะ DSM ใช้ 443 อยู่แล้ว)
+# ผู้ใช้เรียก API ผ่าน:  http://<NAS-IP>:8080/...
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  kong-database:
+    image: postgres:15-alpine
+    container_name: kong-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kong_secure_password
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kong-migrations:
+    image: kong:3.5
+    container_name: kong-migrations
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_secure_password
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    command: kong migrations bootstrap
+    networks:
+      - kong-net
+    restart: on-failure
+
+  kong:
+    image: kong:3.5
+    container_name: kong-gateway
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_secure_password
+      KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"  # port สูง — non-root bind ได้บน NAS
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_GUI_URL: "http://10.10.199.16:8002"
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
+      KONG_NGINX_DAEMON: "off"
+      KONG_NGINX_WORKER_PROCESSES: "auto"
+      KONG_NGINX_WORKER_CONNECTIONS: "10240"
+      KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"
+      KONG_UPSTREAM_KEEPALIVE_TIMEOUT: "60"
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
+    ports:
+      - "8090:8000"    # HTTP Proxy  (host 8090 -> container 8000)
+      - "8443:8443"    # HTTPS Proxy (host 8443 -> container 8443)
+      - "8001:8001"    # Admin API — ปิด Firewall จากภายนอก!
+      - "8002:8002"    # Kong Manager Web UI
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ตั้งค่า Kong อัตโนมัติตอน start (services/routes/plugins/JWT/Prometheus)
+  # รันครั้งเดียวแล้ว exit — ใน Container Manager จะเห็นเป็น "Exited (0)" = ปกติ
+  kong-setup:
+    image: python:3.12-alpine
+    container_name: kong-setup
+    restart: "no"
+    env_file:
+      - ./onelake-middleware/.env    # เอา JWT_SECRET / JWT_ISSUER มาใช้
+    environment:
+      KONG_ADMIN: "http://kong-gateway:8001"
+      KONG_PROXY: "http://kong-gateway:8000"
+    volumes:
+      - ./scripts:/scripts:ro        # ต้องได้ทั้ง kong-init.py + sync-routes-from-swagger.py
+    entrypoint: ["python3", "/scripts/kong-init.py"]
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  konga:
+    image: pantsel/konga:latest
+    container_name: konga-dashboard
+    restart: unless-stopped
+    environment:
+      PORT: "1337"
+      NODE_ENV: production
+      TOKEN_SECRET: konga_jwt_secret_token
+      KONGA_SEED_USER_DATA_SOURCE_FILE: /app/seed/userdb.data
+      KONGA_SEED_KONG_NODE_DATA_SOURCE_FILE: /app/seed/kongnode.data
+    volumes:
+      - ./konga-seed:/app/seed:ro
+      - konga_data:/app/kongadata
+    ports:
+      - "1337:1337"
+    depends_on:
+      kong:
+        condition: service_healthy
+      kong-database:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  log-receiver:
+    build: ./log-receiver
+    container_name: log-receiver
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://kong:kong_secure_password@kong-database:5432/kong
+      PORT: "3001"
+      BATCH_SIZE: "100"
+      FLUSH_INTERVAL_MS: "5000"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  # onelake-middleware backend ลบออกแล้ว — Kong ชี้ไป Azure App Service โดยตรง
+  # (service URL ตั้งใน kong-init.sh -> ONELAKE_UPSTREAM_URL)
+
+  prometheus:
+    image: prom/prometheus:v2.53.4
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-ChangeMe_Grafana1}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - kong-net
+
+volumes:
+  kong_data:
+  prometheus_data:
+  grafana_data:
+  konga_data:

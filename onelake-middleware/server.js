@@ -77,7 +77,11 @@ app.post('/api/auth/login', async (req, res) => {
             name: entraPayload.name,
             email: entraPayload.preferred_username || entraPayload.email,
             entraId: entraPayload.oid // Azure Object ID
-        }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        }, process.env.JWT_SECRET, {
+            expiresIn: '24h',
+            issuer: process.env.JWT_ISSUER || 'onelake-app', // ต้องตรงกับ key ของ jwt credential ใน Kong
+            subject: entraPayload.preferred_username || entraPayload.email
+        });
 
         res.json({
             token: internalToken,
