@@ -12,7 +12,13 @@ CREATE TABLE IF NOT EXISTS kong_api_logs (
     latency_ms          INT,
     consumer_username   VARCHAR(100),
     user_agent          TEXT,
+    -- Device_ID header จากแอป Mobile — แยกได้ถึงระดับเครื่อง (user_agent บอกได้แค่รุ่น)
+    device_id           VARCHAR(100),
+    -- ชื่อผู้ใช้จาก claim sub ใน JWT (เก็บเฉพาะ sub ห้ามเก็บทั้ง token)
+    jwt_user            VARCHAR(100),
     request_body        TEXT,
+    -- ปริมาณข้อมูลเข้า/ออก ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL ข้อ 4.2)
+    request_size        INT,
     response_size       INT,
     service_name        VARCHAR(100),
     route_name          VARCHAR(100),

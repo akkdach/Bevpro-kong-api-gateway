@@ -2,17 +2,65 @@
 
 > เซิร์ฟเวอร์: `WebApplication-kong-gateway` (Azure, 2 คอร์ / 3.8 GB RAM) — IP ถาวร: **20.6.32.81**
 > โดเมน: **bevprogateway.southeastasia.cloudapp.azure.com** (https พร้อมใช้)
-> อัปเดตล่าสุด: 21 ก.ค. 2026
+> อัปเดตล่าสุด: 22 ก.ค. 2026
 
-## 🔐 URL สำหรับ frontend
+## 🔐 Base URL แยกตามแอป
 
-```js
-const BASE = "https://bevprogateway.southeastasia.cloudapp.azure.com";
+```
+GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 ```
 
+| แอป | ตัวแปร | ค่า |
+|---|---|---|
+| **Mobile (UAT)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/uat` **หรือ** `GW/uat/api/v1` (ใช้ได้ทั้งคู่) |
+| **Mobile (PROD)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/prod` **หรือ** `GW/prod/api/v1` |
+| **pro-iot-board** | `REACT_APP_API_BASE_URL_ONE_LEKE` | `GW/api` |
+| | `REACT_APP_API_BASE_URL_IOT` | `GW/iot/v1` |
+| | `REACT_APP_API_BASE_URL_REVENUE` | `GW/revenue/v1` |
+| | `REACT_APP_API_BASE_URL` (BEVProAPI) | เรียกตรง ไม่ผ่าน gateway |
+| | `REACT_APP_API_BASE_URL_IMAGE` | เรียกตรง ไม่ผ่าน gateway |
+
 - SSL: Let's Encrypt หมดอายุ 19 ต.ค. 2026 — ต่ออายุอัตโนมัติผ่าน cron (`scripts/renew-ssl.sh` วันละ 2 ครั้ง)
-- `http://` ยังใช้ได้ (ไม่ได้ปิด) แต่ใช้ `https://` เสมอ ไม่งั้นเว็บที่เปิดด้วย https จะโดน mixed content บล็อก
-- route ทั้งหมด sync จาก Swagger อัตโนมัติ: `python3 scripts/sync-routes-from-swagger.py`
+- `http://` ยังใช้ได้ แต่ใช้ `https://` เสมอ ไม่งั้นเว็บที่เปิดด้วย https จะโดน mixed content บล็อก
+- `/api/WizardConfig` ชี้ **prod เสมอ** แยก environment ไม่ได้ เพราะแอปตัด path เหลือแค่ host
+
+## 🗺️ Service / Route ใน Kong
+
+| service | upstream | route |
+|---|---|---|
+| `onelake-middleware` | Azure App Service | 68 เส้น (`/api/*`) sync จาก Swagger |
+| `bevpro-uat` | `service.bevproasia.com:5001` | `/uat/*` catch-all + public 6 เส้น |
+| `bevpro-prod` | `service.bevproasia.com` | `/prod/*` catch-all + public 6 เส้น + `/api/WizardConfig` |
+| `iot-service` | `iotservice.bevproasia.com/api/v1` | `/iot/v1` |
+| `revenue-service` | `servicemanagement-...azurewebsites.net/api/v1` | `/revenue/v1` |
+| `acme-challenge` | nginx ภายใน | `/.well-known/acme-challenge` (ต่ออายุ SSL — **ห้ามลบ**) |
+
+**consumer:** `BevProApp` (key = `http://www.xxx.com`) · `onelake-app` (สำรอง ยังไม่มีใครใช้)
+
+### สคริปต์จัดการ route
+
+```bash
+python3 scripts/sync-routes-from-swagger.py --dry-run   # onelake — ดูก่อน
+python3 scripts/sync-routes-from-swagger.py             # onelake — ลงจริง
+python3 scripts/add-mobile-catchall.py                  # Mobile uat/prod (แบบ ANY)
+python3 scripts/add-mobile-env-routes.py                # Mobile แบบ allowlist รายเส้น (ทางเลือก)
+sh      scripts/add-jwt-user-plugin.sh                  # ติดตั้ง pre-function ดึงชื่อผู้ใช้จาก JWT
+```
+
+> route ที่สคริปต์สร้างจะติด tag (`swagger-sync` / `mobile-env`) — ตอนลบจะลบเฉพาะที่มี tag ของตัวเอง **route ที่เพิ่มมือใน Konga จึงไม่ถูกแตะ**
+
+## 📊 ข้อมูลที่เก็บใน log (ตาราง `kong_api_logs`)
+
+| คอลัมน์ | ได้มาจาก | ใช้ทำอะไร |
+|---|---|---|
+| `consumer_username` | Kong JWT plugin | แยกราย **แอป** |
+| `jwt_user` | claim `sub` (ผ่าน pre-function) | แยกราย **คน** |
+| `device_id` | header `Device_ID` จากแอป | แยกราย **เครื่อง** |
+| `client_ip` · `user_agent` | Kong | เครือข่าย / ชนิดแอป |
+| `request_size` + `response_size` | Kong | โควตาอินเทอร์เน็ต 20 GB (PROPOSAL 4.2) |
+| `route_name` · `latency_ms` · `status_code` | Kong | วินิจฉัยปัญหา |
+
+> ⚠️ **ห้ามเก็บ JWT ทั้งใบ** — BEVProAPI ใส่รหัสผ่านผู้ใช้ไว้ใน claim `email` (`AuthenController.cs`) ดึงเฉพาะ `sub` เท่านั้น
 
 ## 🚪 ตารางทางเข้าทั้งหมด
 

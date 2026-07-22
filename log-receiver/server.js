@@ -45,9 +45,9 @@ let isShuttingDown = false;
 const INSERT_SQL = `
   INSERT INTO kong_api_logs
     (request_id, client_ip, method, path, status_code, latency_ms,
-     consumer_username, user_agent, request_body, response_size,
+     consumer_username, user_agent, device_id, jwt_user, request_body, request_size, response_size,
      service_name, route_name, request_time)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
   ON CONFLICT (request_id) DO NOTHING
 `;
 
@@ -61,12 +61,40 @@ function toParams(item) {
     item.latency_ms,
     item.consumer_username,
     item.user_agent,
+    item.device_id,
+    item.jwt_user,
     item.request_body,
+    item.request_size,
     item.response_size,
     item.service_name,
     item.route_name,
     item.request_time,
   ];
+}
+
+// ─── ดึงชื่อผู้ใช้จาก JWT ──────────────────────────
+// Kong บอกได้แค่ว่า "แอปไหน" (consumer) แต่ทุกคนในแอปใช้ consumer เดียวกัน
+// ตัวที่บอกว่า "คนไหน" คือ claim sub ในโทเคน (BEVProAPI ใส่ username ไว้ที่นี่)
+//
+// ⚠️ อ่านเฉพาะ sub เท่านั้น ห้ามเก็บ payload ทั้งก้อนหรือตัวโทเคน
+//    เพราะ BEVProAPI ใส่ "รหัสผ่านผู้ใช้" ไว้ใน claim email (AuthenController.cs)
+//    ซึ่ง JWT เป็นแค่ base64 ใครถอดก็อ่านได้
+// ไม่ตรวจลายเซ็น — Kong ตรวจให้แล้วก่อนถึงตรงนี้ (ที่ 401 ก็ยัง log เพื่อให้รู้ว่าใครยิงมา)
+function jwtUser(authHeader) {
+  if (!authHeader || typeof authHeader !== "string") return null;
+  const m = authHeader.match(/^Bearer\s+(\S+)$/i);
+  if (!m) return null;
+  const parts = m[1].split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
+    );
+    const sub = payload.sub || payload.username || payload.unique_name || null;
+    return sub ? String(sub) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Sanitize ─────────────────────────────────────
@@ -97,7 +125,27 @@ function parseKongLog(log) {
       latency_ms: log.latencies?.request || 0,
       consumer_username: clean(log.consumer?.username || "anonymous", 100),
       user_agent: clean(log.request?.headers?.["user-agent"] || ""),
+      // แอป Mobile ส่ง header Device_ID มาทุก request (ดู services/client.ts)
+      // Kong แปลงชื่อ header เป็นตัวพิมพ์เล็กก่อนส่งมาที่นี่
+      // ใช้แยกรายเครื่องได้จริง ต่างจาก user_agent ที่บอกได้แค่รุ่น/OS
+      device_id: clean(
+        log.request?.headers?.["device_id"] ||
+          log.request?.headers?.["device-id"] ||
+          null,
+        100
+      ),
+      // ชื่อผู้ใช้จริงจาก claim sub ในโทเคน
+      // ปกติมาจาก pre-function ของ Kong (field jwt_sub) เพราะ Kong เซ็นเซอร์
+      // header authorization เป็น "REDACTED" ก่อนส่งเข้า log — ถอดเองที่นี่ไม่ได้
+      // ตัวสำรอง jwtUser() ไว้เผื่อ log มาจากทางอื่นที่ไม่ได้ถูกเซ็นเซอร์
+      jwt_user: clean(
+        log.jwt_sub || jwtUser(log.request?.headers?.authorization),
+        100
+      ),
       request_body: null, // ไม่เก็บ body เพื่อประหยัดพื้นที่
+      // ปริมาณข้อมูลขาเข้า/ขาออก — ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL 4.2)
+      // Kong ส่ง request.size มาให้อยู่แล้ว แต่เดิมเก็บแค่ response.size
+      request_size: log.request?.size || 0,
       response_size: log.response?.size || 0,
       service_name: clean(log.service?.name || null, 100),
       route_name: clean(log.route?.name || null, 100),

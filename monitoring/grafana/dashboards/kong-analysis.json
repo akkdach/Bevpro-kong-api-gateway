@@ -1,428 +1,1510 @@
 {
-  "uid": "kong-deep-analysis",
-  "title": "Kong — Deep Analysis",
-  "tags": ["kong", "analysis"],
-  "timezone": "browser",
-  "schemaVersion": 39,
-  "version": 1,
-  "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
-  "panels": [
-    {
-      "type": "row",
-      "title": "ภาพรวมสุขภาพระบบ",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
-      "collapsed": false
-    },
-    {
-      "type": "stat",
-      "title": "5xx (พังจริง)",
-      "description": "error ฝั่งเซิร์ฟเวอร์ — ต่างจาก 401/404 ที่เป็นเรื่องปกติ ตัวนี้ควรเป็น 0",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
-        }
-      },
-      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT count(*) AS \"5xx\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 500"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "429 (ชน rate limit)",
-      "description": "แอปยิงเกิน 200 ครั้ง/นาที ถ้าขึ้นบ่อยต้องปรับเพดานหรือแก้ที่แอป",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 1 }
-            ]
-          }
-        }
-      },
-      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT count(*) AS \"429\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 429"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "p95 Latency",
-      "description": "95% ของ request เร็วกว่าค่านี้ — ค่าเฉลี่ยโดนตัวช้าไม่กี่ตัวลากจนหลอกตา",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1000 },
-              { "color": "red", "value": 3000 }
-            ]
-          }
-        }
-      },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95 FROM kong_api_logs WHERE $__timeFilter(request_time)"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "แอปที่ยิงเข้ามา",
-      "description": "จำนวน consumer ที่ยืนยันตัวตนผ่าน (ไม่นับ anonymous)",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT count(DISTINCT consumer_username) AS apps FROM kong_api_logs WHERE $__timeFilter(request_time) AND consumer_username <> 'anonymous'"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "ข้อมูลที่ส่งออก",
-      "description": "ปริมาณ response ทั้งหมด — endpoint ที่ดึงทีละ 100000 แถวจะเห็นผลตรงนี้",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
-      "fieldConfig": { "defaults": { "unit": "bytes" } },
-      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT coalesce(sum(response_size), 0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time)"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "บอทสแกน (404)",
-      "description": "request ที่ไม่ตรง route ไหนเลย ส่วนใหญ่เป็นบอทไล่หาช่องโหว่ — Kong ตัดจบให้ ไม่ถึง backend",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
-      "options": { "colorMode": "none", "graphMode": "area", "textMode": "value" },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT count(*) AS blocked FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404"
-        }
-      ]
-    },
+    "uid":  "kong-deep-analysis",
+    "title":  "Kong â€” Deep Analysis",
+    "tags":  [
+                 "kong",
+                 "analysis"
+             ],
+    "timezone":  "browser",
+    "schemaVersion":  39,
+    "version":  2,
+    "refresh":  "30s",
+    "time":  {
+                 "from":  "now-6h",
+                 "to":  "now"
+             },
+    "panels":  [
+                   {
+                       "type":  "row",
+                       "title":  "1 Â· à¸ à¸²à¸žà¸£à¸§à¸¡ â€” à¸”à¸¹à¸•à¸£à¸‡à¸™à¸µà¹‰à¸à¹ˆà¸­à¸™",
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  0
+                                   },
+                       "collapsed":  false
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¹€à¸£à¸µà¸¢à¸à¸ªà¸³à¹€à¸£à¹‡à¸ˆ",
+                       "description":  "request à¸—à¸µà¹ˆà¸—à¸³à¸‡à¸²à¸™à¹„à¸”à¹‰à¸ˆà¸£à¸´à¸‡ (status à¸•à¹ˆà¸³à¸à¸§à¹ˆà¸² 400)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  0,
+                                       "y":  1
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "fixed",
+                                                                          "fixedColor":  "green"
+                                                                      }
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "area",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(*) AS ok FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003c 400"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "5xx (à¸žà¸±à¸‡à¸ˆà¸£à¸´à¸‡)",
+                       "description":  "error à¸à¸±à¹ˆà¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ â€” à¸•à¹ˆà¸²à¸‡à¸ˆà¸²à¸ 401/404 à¸—à¸µà¹ˆà¹€à¸›à¹‡à¸™à¹€à¸£à¸·à¹ˆà¸­à¸‡à¸›à¸à¸•à¸´ à¸•à¸±à¸§à¸™à¸µà¹‰à¸„à¸§à¸£à¹€à¸›à¹‡à¸™ 0",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  4,
+                                       "y":  1
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  1
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "background",
+                                       "graphMode":  "none",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(*) AS \"5xx\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003e= 500"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "429 (à¸Šà¸™ rate limit)",
+                       "description":  "à¹à¸­à¸›à¸¢à¸´à¸‡à¹€à¸à¸´à¸™ 200 à¸„à¸£à¸±à¹‰à¸‡/à¸™à¸²à¸—à¸µ à¸–à¹‰à¸²à¸‚à¸¶à¹‰à¸™à¸šà¹ˆà¸­à¸¢à¸•à¹‰à¸­à¸‡à¸›à¸£à¸±à¸šà¹€à¸žà¸”à¸²à¸™à¸«à¸£à¸·à¸­à¹à¸à¹‰à¸—à¸µà¹ˆà¹à¸­à¸›",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  8,
+                                       "y":  1
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "orange",
+                                                                                                 "value":  1
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "background",
+                                       "graphMode":  "none",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(*) AS \"429\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 429"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "p95 Latency",
+                       "description":  "95% à¸‚à¸­à¸‡ request à¹€à¸£à¹‡à¸§à¸à¸§à¹ˆà¸²à¸„à¹ˆà¸²à¸™à¸µà¹‰ â€” à¸„à¹ˆà¸²à¹€à¸‰à¸¥à¸µà¹ˆà¸¢à¹‚à¸”à¸™à¸•à¸±à¸§à¸Šà¹‰à¸²à¹„à¸¡à¹ˆà¸à¸µà¹ˆà¸•à¸±à¸§à¸¥à¸²à¸à¸ˆà¸™à¸«à¸¥à¸­à¸à¸•à¸²",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  12,
+                                       "y":  1
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ms",
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "yellow",
+                                                                                                 "value":  1000
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  3000
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)), 0)::int AS p95 FROM kong_api_logs WHERE $__timeFilter(request_time)"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¹à¸­à¸›à¸—à¸µà¹ˆà¸¢à¸´à¸‡à¹€à¸‚à¹‰à¸²à¸¡à¸²",
+                       "description":  "à¸ˆà¸³à¸™à¸§à¸™ consumer à¸—à¸µà¹ˆà¸¢à¸·à¸™à¸¢à¸±à¸™à¸•à¸±à¸§à¸•à¸™à¸œà¹ˆà¸²à¸™ (à¹„à¸¡à¹ˆà¸™à¸±à¸š anonymous)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  16,
+                                       "y":  1
+                                   },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(DISTINCT consumer_username) AS apps FROM kong_api_logs WHERE $__timeFilter(request_time) AND consumer_username \u003c\u003e \u0027anonymous\u0027"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¸šà¸­à¸—à¸ªà¹à¸à¸™ (404)",
+                       "description":  "request à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸•à¸£à¸‡ route à¹„à¸«à¸™à¹€à¸¥à¸¢ à¸ªà¹ˆà¸§à¸™à¹ƒà¸«à¸à¹ˆà¹€à¸›à¹‡à¸™à¸šà¸­à¸—à¹„à¸¥à¹ˆà¸«à¸²à¸Šà¹ˆà¸­à¸‡à¹‚à¸«à¸§à¹ˆ â€” Kong à¸•à¸±à¸”à¸ˆà¸šà¹ƒà¸«à¹‰ à¹„à¸¡à¹ˆà¸–à¸¶à¸‡ backend",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  4,
+                                       "x":  20,
+                                       "y":  1
+                                   },
+                       "options":  {
+                                       "colorMode":  "none",
+                                       "graphMode":  "area",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(*) AS blocked FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "row",
+                       "title":  "2 Â· à¸à¸²à¸£à¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸ˆà¸£à¸´à¸‡ â€” à¹ƒà¸„à¸£à¹€à¸£à¸µà¸¢à¸à¸­à¸°à¹„à¸£à¸šà¹‰à¸²à¸‡",
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  6
+                                   },
+                       "collapsed":  false
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "à¹€à¸£à¸µà¸¢à¸à¸ªà¸³à¹€à¸£à¹‡à¸ˆà¸•à¸²à¸¡à¹€à¸§à¸¥à¸² à¹à¸¢à¸à¸£à¸²à¸¢à¹à¸­à¸›",
+                       "description":  "à¹€à¸‰à¸žà¸²à¸° status à¸•à¹ˆà¸³à¸à¸§à¹ˆà¸² 400 â€” à¸•à¸±à¸” 401/404 à¸—à¸µà¹ˆà¹€à¸›à¹‡à¸™à¹€à¸ªà¸µà¸¢à¸‡à¸£à¸šà¸à¸§à¸™à¸­à¸­à¸",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  7
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      },
+                                                            "custom":  {
+                                                                           "fillOpacity":  30,
+                                                                           "lineWidth":  2,
+                                                                           "showPoints":  "never",
+                                                                           "stacking":  {
+                                                                                            "mode":  "normal"
+                                                                                        }
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "time_series",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT $__timeGroupAlias(request_time,\u00275m\u0027), coalesce(consumer_username,\u0027anonymous\u0027) AS metric, count(*) AS calls FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003c 400 GROUP BY 1, 2 ORDER BY 1"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¸ªà¸£à¸¸à¸›à¸£à¸²à¸¢à¹à¸­à¸›",
+                       "description":  "à¹à¸­à¸›à¹„à¸«à¸™à¹ƒà¸Šà¹‰à¸«à¸™à¸±à¸à¸ªà¸¸à¸” à¹à¸¥à¸°à¹à¸­à¸›à¹„à¸«à¸™à¸¡à¸µ error à¸œà¸´à¸”à¸›à¸à¸•à¸´",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  7
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
 
-    {
-      "type": "row",
-      "title": "ความเร็ว — หา endpoint ที่ถ่วงระบบ",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
-      "collapsed": false
-    },
-    {
-      "type": "table",
-      "title": "Endpoint ที่ช้าที่สุด (เรียงตาม p95)",
-      "description": "ตัวที่ควรไปแก้ก่อน — ดู p95 ไม่ใช่ avg เพราะ avg ซ่อนตัวช้าไว้",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
-      "fieldConfig": {
-        "defaults": { "custom": { "align": "auto" } },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "p95_ms" },
-            "properties": [
-              { "id": "unit", "value": "ms" },
-              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    { "color": "green", "value": null },
-                    { "color": "yellow", "value": 1000 },
-                    { "color": "red", "value": 3000 }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "max_ms" },
-            "properties": [{ "id": "unit", "value": "ms" }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "p50_ms" },
-            "properties": [{ "id": "unit", "value": "ms" }]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50_ms, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, max(latency_ms) AS max_ms FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1 ORDER BY p95_ms DESC LIMIT 15"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Latency ตามเวลา (p50 / p95 / สูงสุด)",
-      "description": "ช่องว่างระหว่าง p50 กับ p95 ที่กว้าง = บาง request ช้าผิดปกติ",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": { "fillOpacity": 8, "lineWidth": 2, "showPoints": "never" }
-        }
-      },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95, max(latency_ms) AS \"สูงสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Kong ช้า หรือ Backend ช้า",
-      "description": "แยกเวลาที่ใช้ใน Kong ออกจากเวลารอ upstream (Azure App Service) — ถ้าเส้น upstream สูง ปัญหาไม่ได้อยู่ที่ gateway",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(rate(kong_upstream_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_upstream_latency_ms_count[5m])), 1)",
-          "legendFormat": "Backend (upstream)"
-        },
-        {
-          "expr": "sum(rate(kong_kong_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_kong_latency_ms_count[5m])), 1)",
-          "legendFormat": "Kong เอง"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Bandwidth ขาเข้า/ขาออก",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
-          "custom": { "fillOpacity": 15, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal" } }
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (direction) (rate(kong_bandwidth_bytes[5m]))",
-          "legendFormat": "{{direction}}"
-        }
-      ]
-    },
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "bytes"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "p95_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(consumer_username,\u0027anonymous\u0027) AS app, count(*) AS calls, count(*) FILTER (WHERE status_code \u003c 400) AS ok, count(*) FILTER (WHERE status_code \u003e= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 20"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "ðŸ‘¤ à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸µà¹ˆà¸¢à¸´à¸‡ request à¸¡à¸²à¸¡à¸²à¸à¸—à¸µà¹ˆà¸ªà¸¸à¸” (à¸ˆà¸²à¸ JWT)",
+                       "description":  "à¸Šà¸·à¹ˆà¸­à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ˆà¸£à¸´à¸‡à¸ˆà¸²à¸ claim sub à¹ƒà¸™à¹‚à¸—à¹€à¸„à¸™ â€” consumer à¸šà¸­à¸à¹„à¸”à¹‰à¹à¸„à¹ˆà¸§à¹ˆà¸²à¹à¸­à¸›à¹„à¸«à¸™ à¸—à¸¸à¸à¸„à¸™à¹ƒà¸™à¹à¸­à¸›à¹ƒà¸Šà¹‰ consumer à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ Â· à¹à¸–à¸§à¸§à¹ˆà¸²à¸‡à¸„à¸·à¸­ request à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¹‚à¸—à¹€à¸„à¸™ (à¸à¹ˆà¸­à¸™ login / à¸šà¸­à¸—)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  15
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
 
-    {
-      "type": "row",
-      "title": "ข้อผิดพลาด — แยกของจริงออกจากของปกติ",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
-      "collapsed": false
-    },
-    {
-      "type": "timeseries",
-      "title": "Status code ตามเวลา",
-      "description": "401 ก่อน login และ 404 จากบอทเป็นเรื่องปกติ ที่ต้องจับตาคือ 5xx และ 429",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
-      "fieldConfig": {
-        "defaults": {
-          "custom": { "fillOpacity": 70, "lineWidth": 0, "drawStyle": "bars", "stacking": { "mode": "normal" } }
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "200" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
-          { "matcher": { "id": "byName", "options": "401" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
-          { "matcher": { "id": "byName", "options": "404" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
-          { "matcher": { "id": "byName", "options": "500" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
-          { "matcher": { "id": "byName", "options": "503" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "dark-red" } }] }
-        ]
-      },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), status_code::text AS metric, count(*) AS c FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "Error ที่ต้องไปแก้ (4xx/5xx ไม่รวม 401 กับ 404)",
-      "description": "ตัดเสียงรบกวนออก เหลือเฉพาะที่ผิดปกติจริง — ว่างเปล่า = ดี",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS ล่าสุด FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "วินิจฉัยสาเหตุ error อัตโนมัติ",
-      "description": "ตอบคำถาม 'ตกลง 401 นี้คืออะไร' — แยกจาก route_name (Kong หา route เจอไหม) กับ latency (0-1ms = Kong ตัดจบเอง ไม่ถึง backend)",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 33 },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "สาเหตุ" },
-            "properties": [{ "id": "custom.width", "value": 420 }]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, route_name AS \"route ที่รับ\", status_code, CASE WHEN route_name IS NULL THEN '① ไม่มี route เลย — บอท/path มั่ว (Kong ตัดจบ ไม่ถึง backend)' WHEN status_code = 401 AND latency_ms <= 1 THEN '② Kong ปฏิเสธ — ไม่มี token / token หมดอายุ / iss ไม่ตรง' WHEN status_code = 401 THEN '③ backend ปฏิเสธ — token ผ่าน Kong แล้วแต่แอปไม่ยอมรับ' WHEN status_code = 404 THEN '④ ผ่าน gateway แล้วแต่ backend ไม่มี endpoint นี้ — path พิมพ์ผิด?' WHEN status_code = 429 THEN '⑤ ชน rate limit' WHEN status_code >= 500 THEN '⑥ backend พัง (ต้องแก้ด่วน)' ELSE '⑦ อื่น ๆ' END AS \"สาเหตุ\", count(*) AS hits, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 GROUP BY 1, 2, 3, 4 ORDER BY hits DESC LIMIT 25"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "⚠️ path ที่ผ่าน gateway แต่ backend ไม่รู้จัก",
-      "description": "ผลข้างเคียงของการใช้ path แบบ prefix — path พิมพ์ผิดที่ขึ้นต้นเหมือนเส้นจริงจะทะลุถึง backend แล้วได้ 404 กลับมา ตารางนี้จับตัวพวกนั้นให้",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 42 },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS \"path ที่ถูกเรียก\", route_name AS \"route ที่รับไป\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(consumer_username, 'anonymous') AS app, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "ใครยิง 404 เข้ามา (บอทสแกนช่องโหว่)",
-      "description": "IP แปลกหน้าที่ไล่หา path ที่ไม่มีอยู่จริง — ปกติของทุกเซิร์ฟเวอร์ที่เปิดพอร์ต 80 ไม่ต้องทำอะไรตราบใดที่ยังเป็น 404",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT client_ip, left(coalesce(user_agent, '(ไม่ระบุ)'), 45) AS user_agent, count(*) AS hits, left(string_agg(DISTINCT split_part(path, '?', 1), ', '), 90) AS paths FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 GROUP BY 1, 2 ORDER BY hits DESC LIMIT 15"
-        }
-      ]
-    },
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "bytes"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "p95_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "errors"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "custom.cellOptions",
+                                                                                        "value":  {
+                                                                                                      "type":  "color-background"
+                                                                                                  }
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "thresholds",
+                                                                                        "value":  {
+                                                                                                      "mode":  "absolute",
+                                                                                                      "steps":  [
+                                                                                                                    {
+                                                                                                                        "color":  "green",
+                                                                                                                        "value":  null
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "orange",
+                                                                                                                        "value":  1
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(jwt_user, \u0027(à¹„à¸¡à¹ˆà¸¡à¸µà¹‚à¸—à¹€à¸„à¸™)\u0027) AS \"à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰\", coalesce(max(consumer_username),\u0027\u0027) AS app, count(DISTINCT device_id) AS devices, count(*) AS calls, count(*) FILTER (WHERE status_code \u003e= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "ðŸ‘¤ à¸ˆà¸³à¸™à¸§à¸™à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸­à¸¢à¸¹à¹ˆ à¸•à¸²à¸¡à¹€à¸§à¸¥à¸²",
+                       "description":  "à¸™à¸±à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸•à¹ˆà¸­à¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸² â€” à¹ƒà¸Šà¹‰à¸”à¸¹à¸§à¹ˆà¸²à¸Šà¹ˆà¸§à¸‡à¹„à¸«à¸™à¸„à¸™à¹ƒà¸Šà¹‰à¹€à¸¢à¸­à¸°",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  15
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "custom":  {
+                                                                           "fillOpacity":  20,
+                                                                           "lineWidth":  2,
+                                                                           "showPoints":  "auto"
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "time_series",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT $__timeGroupAlias(request_time,\u002715m\u0027), count(DISTINCT jwt_user) AS \"à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¸‹à¹‰à¸³\", count(DISTINCT device_id) AS \"à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸¡à¹ˆà¸‹à¹‰à¸³\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "Endpoint à¸—à¸µà¹ˆà¸–à¸¹à¸à¹€à¸£à¸µà¸¢à¸à¸¡à¸²à¸à¸—à¸µà¹ˆà¸ªà¸¸à¸”",
+                       "description":  "à¹ƒà¸Šà¹‰à¸•à¸±à¸”à¸ªà¸´à¸™à¹ƒà¸ˆà¸§à¹ˆà¸²à¸„à¸§à¸£à¸—à¸³ cache à¸—à¸µà¹ˆà¹„à¸«à¸™ à¹à¸¥à¸°à¹€à¸ªà¹‰à¸™à¹„à¸«à¸™à¸à¸£à¸°à¸—à¸šà¸„à¸™à¹€à¸¢à¸­à¸°à¸–à¹‰à¸²à¸žà¸±à¸‡",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  24
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
 
-    {
-      "type": "row",
-      "title": "การใช้งานรายแอป",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
-      "collapsed": false
-    },
-    {
-      "type": "timeseries",
-      "title": "Request รายแอปตามเวลา",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
-      "fieldConfig": {
-        "defaults": {
-          "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" }
-        }
-      },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), coalesce(consumer_username, 'anonymous') AS metric, count(*) AS requests FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "สรุปรายแอป",
-      "description": "ใช้ดูว่าแอปไหนกินทรัพยากรมากสุด และแอปไหนมี error เยอะผิดปกติ",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "bytes" },
-            "properties": [{ "id": "unit", "value": "bytes" }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "p95_ms" },
-            "properties": [{ "id": "unit", "value": "ms" }]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT coalesce(consumer_username, 'anonymous') AS app, count(*) AS calls, count(*) FILTER (WHERE status_code >= 400) AS errors, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, coalesce(sum(response_size), 0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 20"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "title": "Endpoint ที่ถูกเรียกบ่อยที่สุด",
-      "description": "ใช้ตัดสินใจว่าควรทำ cache ที่ไหน และเส้นไหนกระทบคนเยอะถ้าพัง",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 50 },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "p95_ms" }, "properties": [{ "id": "unit", "value": "ms" }] },
-          { "matcher": { "id": "byName", "options": "bytes_total" }, "properties": [{ "id": "unit", "value": "bytes" }] }
-        ]
-      },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, count(DISTINCT consumer_username) AS apps, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, coalesce(sum(response_size), 0)::bigint AS bytes_total, count(*) FILTER (WHERE status_code >= 400) AS errors FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
-        }
-      ]
-    }
-  ]
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "p95_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "bytes"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT split_part(path, \u0027?\u0027, 1) AS endpoint, count(*) AS calls, count(*) FILTER (WHERE status_code \u003c 400) AS ok, count(*) FILTER (WHERE status_code \u003e= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "Log à¸à¸²à¸£à¹€à¸£à¸µà¸¢à¸ API à¸¥à¹ˆà¸²à¸ªà¸¸à¸” (à¸—à¸¸à¸à¸ªà¸–à¸²à¸™à¸°)",
+                       "description":  "à¸£à¸²à¸¢à¸à¸²à¸£à¸”à¸´à¸šà¹€à¸£à¸µà¸¢à¸‡à¸•à¸²à¸¡à¹€à¸§à¸¥à¸² à¹ƒà¸Šà¹‰à¹„à¸¥à¹ˆà¸”à¸¹à¸§à¹ˆà¸²à¹à¸­à¸›à¸¢à¸´à¸‡à¸­à¸°à¹„à¸£à¸¡à¸²à¸šà¹‰à¸²à¸‡",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  11,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  33
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "latency_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "bytes"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "status"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "custom.cellOptions",
+                                                                                        "value":  {
+                                                                                                      "type":  "color-background"
+                                                                                                  }
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "thresholds",
+                                                                                        "value":  {
+                                                                                                      "mode":  "absolute",
+                                                                                                      "steps":  [
+                                                                                                                    {
+                                                                                                                        "color":  "green",
+                                                                                                                        "value":  null
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "yellow",
+                                                                                                                        "value":  400
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "red",
+                                                                                                                        "value":  500
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT request_time AS à¹€à¸§à¸¥à¸², coalesce(consumer_username,\u0027anonymous\u0027) AS app, method, split_part(path,\u0027?\u0027,1) AS path, status_code AS status, latency_ms, (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS bytes, route_name FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 100"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "row",
+                       "title":  "3 Â· à¸„à¸§à¸²à¸¡à¹€à¸£à¹‡à¸§ â€” à¸«à¸² endpoint à¸—à¸µà¹ˆà¸–à¹ˆà¸§à¸‡à¸£à¸°à¸šà¸š",
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  44
+                                   },
+                       "collapsed":  false
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "Endpoint à¸—à¸µà¹ˆà¸Šà¹‰à¸²à¸—à¸µà¹ˆà¸ªà¸¸à¸” (à¹€à¸£à¸µà¸¢à¸‡à¸•à¸²à¸¡ p95)",
+                       "description":  "à¸•à¸±à¸§à¸—à¸µà¹ˆà¸„à¸§à¸£à¹„à¸›à¹à¸à¹‰à¸à¹ˆà¸­à¸™ â€” à¸”à¸¹ p95 à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ avg à¹€à¸žà¸£à¸²à¸° avg à¸‹à¹ˆà¸­à¸™à¸•à¸±à¸§à¸Šà¹‰à¸²à¹„à¸§à¹‰",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  45
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "custom":  {
+                                                                           "align":  "auto"
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "p95_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "custom.cellOptions",
+                                                                                        "value":  {
+                                                                                                      "type":  "color-background"
+                                                                                                  }
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "thresholds",
+                                                                                        "value":  {
+                                                                                                      "mode":  "absolute",
+                                                                                                      "steps":  [
+                                                                                                                    {
+                                                                                                                        "color":  "green",
+                                                                                                                        "value":  null
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "yellow",
+                                                                                                                        "value":  1000
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "red",
+                                                                                                                        "value":  3000
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "max_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "p50_ms"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "ms"
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT split_part(path, \u0027?\u0027, 1) AS endpoint, count(*) AS calls, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50_ms, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, max(latency_ms) AS max_ms FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003c 400 GROUP BY 1 ORDER BY p95_ms DESC LIMIT 15"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Latency à¸•à¸²à¸¡à¹€à¸§à¸¥à¸² (p50 / p95 / à¸ªà¸¹à¸‡à¸ªà¸¸à¸”)",
+                       "description":  "à¸Šà¹ˆà¸­à¸‡à¸§à¹ˆà¸²à¸‡à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡ p50 à¸à¸±à¸š p95 à¸—à¸µà¹ˆà¸à¸§à¹‰à¸²à¸‡ = à¸šà¸²à¸‡ request à¸Šà¹‰à¸²à¸œà¸´à¸”à¸›à¸à¸•à¸´",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  45
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ms",
+                                                            "custom":  {
+                                                                           "fillOpacity":  8,
+                                                                           "lineWidth":  2,
+                                                                           "showPoints":  "never"
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "time_series",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT $__timeGroupAlias(request_time,\u00275m\u0027), round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95, max(latency_ms) AS \"à¸ªà¸¹à¸‡à¸ªà¸¸à¸”\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Kong à¸Šà¹‰à¸² à¸«à¸£à¸·à¸­ Backend à¸Šà¹‰à¸²",
+                       "description":  "à¹à¸¢à¸à¹€à¸§à¸¥à¸²à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¹ƒà¸™ Kong à¸­à¸­à¸à¸ˆà¸²à¸à¹€à¸§à¸¥à¸²à¸£à¸­ upstream â€” à¸–à¹‰à¸²à¹€à¸ªà¹‰à¸™ Backend à¸ªà¸¹à¸‡ à¸›à¸±à¸à¸«à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸­à¸¢à¸¹à¹ˆà¸—à¸µà¹ˆ gateway",
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  54
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ms",
+                                                            "custom":  {
+                                                                           "fillOpacity":  10,
+                                                                           "lineWidth":  2,
+                                                                           "showPoints":  "never"
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(kong_upstream_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_upstream_latency_ms_count[5m])), 1)",
+                                           "legendFormat":  "Backend (upstream)"
+                                       },
+                                       {
+                                           "expr":  "sum(rate(kong_kong_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_kong_latency_ms_count[5m])), 1)",
+                                           "legendFormat":  "Kong à¹€à¸­à¸‡"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Bandwidth à¸‚à¸²à¹€à¸‚à¹‰à¸²/à¸‚à¸²à¸­à¸­à¸ (à¹€à¸£à¸µà¸¢à¸¥à¹„à¸—à¸¡à¹Œ)",
+                       "description":  "à¸ˆà¸²à¸ Prometheus â€” à¸”à¸¹à¸­à¸±à¸•à¸£à¸²à¹„à¸«à¸¥à¸‚à¸­à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ à¸ªà¹ˆà¸§à¸™à¸¢à¸­à¸”à¸ªà¸°à¸ªà¸¡à¸”à¸¹à¸—à¸µà¹ˆà¸«à¸±à¸§à¸‚à¹‰à¸­ 5",
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  54
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "Bps",
+                                                            "custom":  {
+                                                                           "fillOpacity":  15,
+                                                                           "lineWidth":  1,
+                                                                           "showPoints":  "never",
+                                                                           "stacking":  {
+                                                                                            "mode":  "normal"
+                                                                                        }
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (direction) (rate(kong_bandwidth_bytes[5m]))",
+                                           "legendFormat":  "{{direction}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "row",
+                       "title":  "4 Â· à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸” â€” à¹à¸¢à¸à¸‚à¸­à¸‡à¸ˆà¸£à¸´à¸‡à¸­à¸­à¸à¸ˆà¸²à¸à¹€à¸ªà¸µà¸¢à¸‡à¸£à¸šà¸à¸§à¸™",
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  62
+                                   },
+                       "collapsed":  false
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Status code à¸•à¸²à¸¡à¹€à¸§à¸¥à¸²",
+                       "description":  "401 à¸à¹ˆà¸­à¸™ login à¹à¸¥à¸° 404 à¸ˆà¸²à¸à¸šà¸­à¸—à¹€à¸›à¹‡à¸™à¹€à¸£à¸·à¹ˆà¸­à¸‡à¸›à¸à¸•à¸´ à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸ˆà¸±à¸šà¸•à¸²à¸„à¸·à¸­ 5xx à¹à¸¥à¸° 429",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  63
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "custom":  {
+                                                                           "fillOpacity":  70,
+                                                                           "lineWidth":  0,
+                                                                           "drawStyle":  "bars",
+                                                                           "stacking":  {
+                                                                                            "mode":  "normal"
+                                                                                        }
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "200"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "mode":  "fixed",
+                                                                                                      "fixedColor":  "green"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "401"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "mode":  "fixed",
+                                                                                                      "fixedColor":  "yellow"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "404"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "mode":  "fixed",
+                                                                                                      "fixedColor":  "orange"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "500"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "mode":  "fixed",
+                                                                                                      "fixedColor":  "red"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "503"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "mode":  "fixed",
+                                                                                                      "fixedColor":  "dark-red"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "time_series",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT $__timeGroupAlias(request_time,\u00275m\u0027), status_code::text AS metric, count(*) AS c FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "Error à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¹„à¸›à¹à¸à¹‰ (à¹„à¸¡à¹ˆà¸£à¸§à¸¡ 401 à¸à¸±à¸š 404)",
+                       "description":  "à¸•à¸±à¸”à¹€à¸ªà¸µà¸¢à¸‡à¸£à¸šà¸à¸§à¸™à¸­à¸­à¸ à¹€à¸«à¸¥à¸·à¸­à¹€à¸‰à¸žà¸²à¸°à¸—à¸µà¹ˆà¸œà¸´à¸”à¸›à¸à¸•à¸´à¸ˆà¸£à¸´à¸‡ â€” à¸§à¹ˆà¸²à¸‡à¹€à¸›à¸¥à¹ˆà¸² = à¸”à¸µ",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  63
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT split_part(path, \u0027?\u0027, 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS à¸¥à¹ˆà¸²à¸ªà¸¸à¸” FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003e= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¸§à¸´à¸™à¸´à¸ˆà¸‰à¸±à¸¢à¸ªà¸²à¹€à¸«à¸•à¸¸ error à¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´",
+                       "description":  "à¸•à¸­à¸šà¸„à¸³à¸–à¸²à¸¡ \u0027à¸•à¸à¸¥à¸‡ 401 à¸™à¸µà¹‰à¸„à¸·à¸­à¸­à¸°à¹„à¸£\u0027 â€” à¹à¸¢à¸à¸ˆà¸²à¸ route_name (Kong à¸«à¸² route à¹€à¸ˆà¸­à¹„à¸«à¸¡) à¸à¸±à¸š latency (0-1ms = Kong à¸•à¸±à¸”à¸ˆà¸šà¹€à¸­à¸‡ à¹„à¸¡à¹ˆà¸–à¸¶à¸‡ backend)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  9,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  71
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "à¸ªà¸²à¹€à¸«à¸•à¸¸"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "custom.width",
+                                                                                        "value":  420
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT split_part(path, \u0027?\u0027, 1) AS endpoint, route_name AS \"route à¸—à¸µà¹ˆà¸£à¸±à¸š\", status_code, CASE WHEN route_name IS NULL THEN \u0027â‘  à¹„à¸¡à¹ˆà¸¡à¸µ route à¹€à¸¥à¸¢ â€” à¸šà¸­à¸—/path à¸¡à¸±à¹ˆà¸§ (Kong à¸•à¸±à¸”à¸ˆà¸š à¹„à¸¡à¹ˆà¸–à¸¶à¸‡ backend)\u0027 WHEN status_code = 401 AND latency_ms \u003c= 1 THEN \u0027â‘¡ Kong à¸›à¸à¸´à¹€à¸ªà¸˜ â€” à¹„à¸¡à¹ˆà¸¡à¸µ token / token à¸«à¸¡à¸”à¸­à¸²à¸¢à¸¸ / iss à¹„à¸¡à¹ˆà¸•à¸£à¸‡\u0027 WHEN status_code = 401 THEN \u0027â‘¢ backend à¸›à¸à¸´à¹€à¸ªà¸˜ â€” token à¸œà¹ˆà¸²à¸™ Kong à¹à¸¥à¹‰à¸§à¹à¸•à¹ˆà¹à¸­à¸›à¹„à¸¡à¹ˆà¸¢à¸­à¸¡à¸£à¸±à¸š\u0027 WHEN status_code = 404 THEN \u0027â‘£ à¸œà¹ˆà¸²à¸™ gateway à¹à¸¥à¹‰à¸§à¹à¸•à¹ˆ backend à¹„à¸¡à¹ˆà¸¡à¸µ endpoint à¸™à¸µà¹‰ â€” path à¸žà¸´à¸¡à¸žà¹Œà¸œà¸´à¸”?\u0027 WHEN status_code = 429 THEN \u0027â‘¤ à¸Šà¸™ rate limit\u0027 WHEN status_code \u003e= 500 THEN \u0027â‘¥ backend à¸žà¸±à¸‡ (à¸•à¹‰à¸­à¸‡à¹à¸à¹‰à¸”à¹ˆà¸§à¸™)\u0027 ELSE \u0027â‘¦ à¸­à¸·à¹ˆà¸™ à¹†\u0027 END AS \"à¸ªà¸²à¹€à¸«à¸•à¸¸\", count(*) AS hits, max(request_time) AS \"à¸¥à¹ˆà¸²à¸ªà¸¸à¸”\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code \u003e= 400 GROUP BY 1, 2, 3, 4 ORDER BY hits DESC LIMIT 25"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "âš ï¸ path à¸—à¸µà¹ˆà¸œà¹ˆà¸²à¸™ gateway à¹à¸•à¹ˆ backend à¹„à¸¡à¹ˆà¸£à¸¹à¹‰à¸ˆà¸±à¸",
+                       "description":  "path à¸žà¸´à¸¡à¸žà¹Œà¸œà¸´à¸”à¸—à¸µà¹ˆà¸—à¸°à¸¥à¸¸à¸–à¸¶à¸‡ backend à¹à¸¥à¹‰à¸§à¹„à¸”à¹‰ 404 à¸à¸¥à¸±à¸šà¸¡à¸² â€” à¸–à¹‰à¸²à¸¡à¸µà¹à¸–à¸§à¹‚à¸œà¸¥à¹ˆà¸¡à¸²à¹à¸›à¸¥à¸§à¹ˆà¸²à¹à¸­à¸›à¹€à¸£à¸µà¸¢à¸ endpoint à¸œà¸´à¸”à¸Šà¸·à¹ˆà¸­",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  7,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  80
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT split_part(path, \u0027?\u0027, 1) AS \"path à¸—à¸µà¹ˆà¸–à¸¹à¸à¹€à¸£à¸µà¸¢à¸\", route_name AS \"route à¸—à¸µà¹ˆà¸£à¸±à¸šà¹„à¸›\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(consumer_username, \u0027anonymous\u0027) AS app, max(request_time) AS \"à¸¥à¹ˆà¸²à¸ªà¸¸à¸”\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¹ƒà¸„à¸£à¸¢à¸´à¸‡ 404 à¹€à¸‚à¹‰à¸²à¸¡à¸² (à¸šà¸­à¸—à¸ªà¹à¸à¸™à¸Šà¹ˆà¸­à¸‡à¹‚à¸«à¸§à¹ˆ)",
+                       "description":  "IP à¹à¸›à¸¥à¸à¸«à¸™à¹‰à¸²à¸—à¸µà¹ˆà¹„à¸¥à¹ˆà¸«à¸² path à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸­à¸¢à¸¹à¹ˆà¸ˆà¸£à¸´à¸‡ â€” à¸›à¸à¸•à¸´à¸‚à¸­à¸‡à¸—à¸¸à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸žà¸­à¸£à¹Œà¸• 80 à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸—à¸³à¸­à¸°à¹„à¸£à¸•à¸£à¸²à¸šà¹ƒà¸”à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹€à¸›à¹‡à¸™ 404",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  87
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT client_ip, left(coalesce(user_agent, \u0027(à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸)\u0027), 45) AS user_agent, count(*) AS hits, left(string_agg(DISTINCT split_part(path, \u0027?\u0027, 1), \u0027, \u0027), 90) AS paths FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NULL GROUP BY 1, 2 ORDER BY hits DESC LIMIT 15"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "row",
+                       "title":  "5 Â· à¹‚à¸„à¸§à¸•à¸²à¸­à¸´à¸™à¹€à¸—à¸­à¸£à¹Œà¹€à¸™à¹‡à¸• â€” à¸›à¸£à¸´à¸¡à¸²à¸“à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸£à¸²à¸¢ Client (PROPOSAL à¸‚à¹‰à¸­ 4.2)",
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  95
+                                   },
+                       "collapsed":  false
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸£à¸§à¸¡à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸",
+                       "description":  "à¸‚à¸²à¹€à¸‚à¹‰à¸² + à¸‚à¸²à¸­à¸­à¸ à¸£à¸§à¸¡à¸—à¸¸à¸ client â€” à¸ªà¸¹à¸•à¸£à¸•à¸²à¸¡ PROPOSAL: SUM(request_size + response_size)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  6,
+                                       "x":  0,
+                                       "y":  96
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "bytes"
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "area",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(sum(coalesce(request_size,0) + coalesce(response_size,0)),0)::bigint AS total FROM kong_api_logs WHERE $__timeFilter(request_time)"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¸‚à¸²à¹€à¸‚à¹‰à¸² (Upload)",
+                       "description":  "à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆ client à¸ªà¹ˆà¸‡à¸‚à¸¶à¹‰à¸™à¸¡à¸² â€” endpoint à¸­à¸±à¸›à¹‚à¸«à¸¥à¸”à¸£à¸¹à¸›à¸ˆà¸°à¹€à¸«à¹‡à¸™à¸œà¸¥à¸•à¸£à¸‡à¸™à¸µà¹‰",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  6,
+                                       "x":  6,
+                                       "y":  96
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "bytes"
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "area",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(sum(request_size),0)::bigint AS upload FROM kong_api_logs WHERE $__timeFilter(request_time)"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¸‚à¸²à¸­à¸­à¸ (Download)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  6,
+                                       "x":  12,
+                                       "y":  96
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "bytes"
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "value",
+                                       "graphMode":  "area",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(sum(response_size),0)::bigint AS download FROM kong_api_logs WHERE $__timeFilter(request_time)"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "stat",
+                       "title":  "à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¹€à¸à¸´à¸™ 20 GB (à¹€à¸”à¸·à¸­à¸™à¸™à¸µà¹‰)",
+                       "description":  "à¸™à¸±à¸šà¸ˆà¸²à¸ Device_ID à¸—à¸µà¹ˆà¹à¸­à¸›à¸ªà¹ˆà¸‡à¸¡à¸² = à¹à¸¢à¸à¹„à¸”à¹‰à¸–à¸¶à¸‡à¸£à¸°à¸”à¸±à¸šà¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸ˆà¸£à¸´à¸‡ à¸„à¸´à¸”à¸ˆà¸²à¸à¸•à¹‰à¸™à¹€à¸”à¸·à¸­à¸™à¸–à¸¶à¸‡à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™ à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¸à¸±à¸šà¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸²à¸”à¹‰à¸²à¸™à¸šà¸™",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  5,
+                                       "w":  6,
+                                       "x":  18,
+                                       "y":  96
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  1
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "options":  {
+                                       "colorMode":  "background",
+                                       "graphMode":  "none",
+                                       "textMode":  "value"
+                                   },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT count(*) AS over_quota FROM (SELECT device_id FROM kong_api_logs WHERE request_time \u003e= date_trunc(\u0027month\u0027, now()) AND device_id IS NOT NULL GROUP BY device_id HAVING sum(coalesce(request_size,0) + coalesce(response_size,0)) \u003e 20::bigint * 1024 * 1024 * 1024) q"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¸›à¸£à¸´à¸¡à¸²à¸“à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸£à¸²à¸¢à¹à¸­à¸› (consumer)",
+                       "description":  "à¹ƒà¸Šà¹‰à¸­à¸­à¸à¸£à¸²à¸¢à¸‡à¸²à¸™à¹€à¸£à¸µà¸¢à¸à¹€à¸à¹‡à¸š / à¸§à¸²à¸‡à¹à¸œà¸™à¹à¸žà¹‡à¸à¹€à¸à¸ˆ â€” à¹€à¸—à¸µà¸¢à¸šà¸à¸±à¸šà¹‚à¸„à¸§à¸•à¸² 20 GB à¸•à¹ˆà¸­à¹€à¸”à¸·à¸­à¸™",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  101
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "upload"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "download"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "total"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "pct_of_20gb"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "percent"
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "custom.cellOptions",
+                                                                                        "value":  {
+                                                                                                      "type":  "gauge",
+                                                                                                      "mode":  "gradient"
+                                                                                                  }
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "max",
+                                                                                        "value":  100
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "thresholds",
+                                                                                        "value":  {
+                                                                                                      "mode":  "absolute",
+                                                                                                      "steps":  [
+                                                                                                                    {
+                                                                                                                        "color":  "green",
+                                                                                                                        "value":  null
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "yellow",
+                                                                                                                        "value":  70
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "red",
+                                                                                                                        "value":  90
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(consumer_username,\u0027anonymous\u0027) AS client, count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY total DESC LIMIT 20"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¸›à¸£à¸´à¸¡à¸²à¸“à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸£à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (Device_ID)",
+                       "description":  "à¹à¸¢à¸à¸–à¸¶à¸‡à¸£à¸°à¸”à¸±à¸šà¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸ˆà¸£à¸´à¸‡à¸ˆà¸²à¸ header Device_ID à¸—à¸µà¹ˆà¹à¸­à¸›à¸ªà¹ˆà¸‡à¸¡à¸² â€” à¹ƒà¸Šà¹‰à¸«à¸²à¸§à¹ˆà¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸«à¸™à¸à¸´à¸™à¹‚à¸„à¸§à¸•à¸²à¸œà¸´à¸”à¸›à¸à¸•à¸´ Â· à¹à¸–à¸§à¸—à¸µà¹ˆ device_id à¸§à¹ˆà¸²à¸‡à¸„à¸·à¸­ traffic à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸¡à¸²à¸ˆà¸²à¸à¹à¸­à¸› (à¹€à¸§à¹‡à¸š/à¸šà¸­à¸—)",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  101
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "total"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "upload"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "download"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "pct_of_20gb"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "percent"
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "custom.cellOptions",
+                                                                                        "value":  {
+                                                                                                      "type":  "gauge",
+                                                                                                      "mode":  "gradient"
+                                                                                                  }
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "max",
+                                                                                        "value":  100
+                                                                                    },
+                                                                                    {
+                                                                                        "id":  "thresholds",
+                                                                                        "value":  {
+                                                                                                      "mode":  "absolute",
+                                                                                                      "steps":  [
+                                                                                                                    {
+                                                                                                                        "color":  "green",
+                                                                                                                        "value":  null
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "yellow",
+                                                                                                                        "value":  70
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "color":  "red",
+                                                                                                                        "value":  90
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT coalesce(device_id, \u0027(à¹„à¸¡à¹ˆà¸ªà¹ˆà¸‡ Device_ID)\u0027) AS device, left(coalesce(max(user_agent),\u0027\u0027), 28) AS app, count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY total DESC LIMIT 25"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "table",
+                       "title":  "à¸›à¸£à¸´à¸¡à¸²à¸“à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸£à¸²à¸¢à¸Šà¸™à¸´à¸”à¹à¸­à¸› (user_agent)",
+                       "description":  "à¸£à¸§à¸¡à¸—à¸¸à¸à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¹à¸­à¸›à¸Šà¸™à¸´à¸”à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ â€” okhttp = Android à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” Â· à¹ƒà¸Šà¹‰à¸”à¸¹à¸ à¸²à¸žà¸£à¸§à¸¡ à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¸£à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  109
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "total"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "upload"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "download"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "unit",
+                                                                                        "value":  "bytes"
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "table",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT left(coalesce(user_agent,\u0027(à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸)\u0027), 55) AS app_type, count(DISTINCT device_id) AS devices, count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY total DESC LIMIT 20"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "à¸›à¸£à¸´à¸¡à¸²à¸“à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸•à¸²à¸¡à¹€à¸§à¸¥à¸² à¹à¸¢à¸à¸£à¸²à¸¢à¹à¸­à¸›",
+                       "description":  "à¹ƒà¸Šà¹‰à¸”à¸¹à¸§à¹ˆà¸²à¸Šà¹ˆà¸§à¸‡à¹„à¸«à¸™à¸à¸´à¸™à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸žà¸¸à¹ˆà¸‡ à¹à¸¥à¸°à¹€à¸à¸´à¸”à¸ˆà¸²à¸à¹à¸­à¸›à¹„à¸«à¸™",
+                       "datasource":  {
+                                          "type":  "postgres",
+                                          "uid":  "konglogs"
+                                      },
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  117
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "bytes",
+                                                            "custom":  {
+                                                                           "fillOpacity":  25,
+                                                                           "lineWidth":  1,
+                                                                           "showPoints":  "never",
+                                                                           "stacking":  {
+                                                                                            "mode":  "normal"
+                                                                                        }
+                                                                       }
+                                                        }
+                                       },
+                       "targets":  [
+                                       {
+                                           "format":  "time_series",
+                                           "rawQuery":  true,
+                                           "rawSql":  "SELECT $__timeGroupAlias(request_time,\u00271h\u0027), coalesce(consumer_username,\u0027anonymous\u0027) AS metric, sum(coalesce(request_size,0)+coalesce(response_size,0)) AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1,2 ORDER BY 1"
+                                       }
+                                   ]
+                   }
+               ]
 }
