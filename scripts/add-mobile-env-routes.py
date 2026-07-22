@@ -81,9 +81,14 @@ ENDPOINTS = [
     ("/Mobile/TranferRequestTo_ddl",       G,      False),
     ("/Mobile/TranferRequestSparepartList", G,     False),
     ("/Mobile/ReservationRequest_create",  P,      False),
+    # _Waite / _Waite_Van / _Waite_7day / _Waite_Item เป็นคนละ endpoint
+    # regex ลงท้าย (?<rest>/.*)?$ จับได้เฉพาะที่ต่อด้วย "/" — "_Van" จึงไม่เข้า ต้องแยกเส้น
     ("/Mobile/ReservationRequest_Waite",   P,      False),
-    ("/Mobile/ReservationRequest_approve", P,      False),
-    ("/Mobile/ReservationRequest_Cancel",  P,      False),
+    ("/Mobile/ReservationRequest_Waite_Van",  P,   False),
+    ("/Mobile/ReservationRequest_Waite_7day", P,   False),
+    ("/Mobile/ReservationRequest_Waite_Item", P,   False),   # + /{resId}
+    ("/Mobile/ReservationRequest_approve", P,      False),   # + /{resId}
+    ("/Mobile/ReservationRequest_Cancel",  P,      False),   # + /{resId}
     ("/Mobile/TranferReceiveSparepartFromNav", P,  False),
     ("/Mobile/RemainingSparepart",         G,      False),
     ("/Mobile/RemainingTools",             G,      False),
@@ -179,7 +184,11 @@ def main():
         for ep, methods, pub in ENDPOINTS:
             name = slug(env, ep)
             # regex + capture ส่วนท้าย เพื่อไม่ให้ path parameter หาย
-            path = f"~/{env}{ep}(?<rest>/.*)?$"
+            # (?:/api/v1)? = รับได้ทั้ง 2 แบบ ขึ้นกับว่าแอปตั้ง base ยังไง
+            #   base = https://gw/uat          -> /uat/Mobile/workorder
+            #   base = https://gw/uat/api/v1   -> /uat/api/v1/Mobile/workorder
+            # ของเดิม base มี /api/v1 อยู่แล้ว คนตั้งค่ามักเก็บไว้ ทำให้ 404
+            path = f"~/{env}(?:/api/v1)?{ep}(?<rest>/.*)?$"
             data = [("paths[]", path), ("strip_path", "false"), ("tags[]", TAG)] + \
                    [("methods[]", m) for m in sorted(set(methods) | {"OPTIONS"})]
             code, body = req("PUT", f"{ADMIN}/services/{svc}/routes/{name}", data)
