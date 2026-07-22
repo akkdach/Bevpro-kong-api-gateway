@@ -1,0 +1,428 @@
+{
+  "uid": "kong-deep-analysis",
+  "title": "Kong — Deep Analysis",
+  "tags": ["kong", "analysis"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "ภาพรวมสุขภาพระบบ",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "5xx (พังจริง)",
+      "description": "error ฝั่งเซิร์ฟเวอร์ — ต่างจาก 401/404 ที่เป็นเรื่องปกติ ตัวนี้ควรเป็น 0",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"5xx\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 500"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "429 (ชน rate limit)",
+      "description": "แอปยิงเกิน 200 ครั้ง/นาที ถ้าขึ้นบ่อยต้องปรับเพดานหรือแก้ที่แอป",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"429\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 429"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p95 Latency",
+      "description": "95% ของ request เร็วกว่าค่านี้ — ค่าเฉลี่ยโดนตัวช้าไม่กี่ตัวลากจนหลอกตา",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red", "value": 3000 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95 FROM kong_api_logs WHERE $__timeFilter(request_time)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "แอปที่ยิงเข้ามา",
+      "description": "จำนวน consumer ที่ยืนยันตัวตนผ่าน (ไม่นับ anonymous)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT consumer_username) AS apps FROM kong_api_logs WHERE $__timeFilter(request_time) AND consumer_username <> 'anonymous'"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลที่ส่งออก",
+      "description": "ปริมาณ response ทั้งหมด — endpoint ที่ดึงทีละ 100000 แถวจะเห็นผลตรงนี้",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(response_size), 0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "บอทสแกน (404)",
+      "description": "request ที่ไม่ตรง route ไหนเลย ส่วนใหญ่เป็นบอทไล่หาช่องโหว่ — Kong ตัดจบให้ ไม่ถึง backend",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "options": { "colorMode": "none", "graphMode": "area", "textMode": "value" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS blocked FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "ความเร็ว — หา endpoint ที่ถ่วงระบบ",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "title": "Endpoint ที่ช้าที่สุด (เรียงตาม p95)",
+      "description": "ตัวที่ควรไปแก้ก่อน — ดู p95 ไม่ใช่ avg เพราะ avg ซ่อนตัวช้าไว้",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "p95_ms" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "yellow", "value": 1000 },
+                    { "color": "red", "value": 3000 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_ms" },
+            "properties": [{ "id": "unit", "value": "ms" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p50_ms" },
+            "properties": [{ "id": "unit", "value": "ms" }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50_ms, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, max(latency_ms) AS max_ms FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1 ORDER BY p95_ms DESC LIMIT 15"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency ตามเวลา (p50 / p95 / สูงสุด)",
+      "description": "ช่องว่างระหว่าง p50 กับ p95 ที่กว้าง = บาง request ช้าผิดปกติ",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "fillOpacity": 8, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95, max(latency_ms) AS \"สูงสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kong ช้า หรือ Backend ช้า",
+      "description": "แยกเวลาที่ใช้ใน Kong ออกจากเวลารอ upstream (Azure App Service) — ถ้าเส้น upstream สูง ปัญหาไม่ได้อยู่ที่ gateway",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(kong_upstream_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_upstream_latency_ms_count[5m])), 1)",
+          "legendFormat": "Backend (upstream)"
+        },
+        {
+          "expr": "sum(rate(kong_kong_latency_ms_sum[5m])) / clamp_min(sum(rate(kong_kong_latency_ms_count[5m])), 1)",
+          "legendFormat": "Kong เอง"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Bandwidth ขาเข้า/ขาออก",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 15, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal" } }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (direction) (rate(kong_bandwidth_bytes[5m]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "ข้อผิดพลาด — แยกของจริงออกจากของปกติ",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Status code ตามเวลา",
+      "description": "401 ก่อน login และ 404 จากบอทเป็นเรื่องปกติ ที่ต้องจับตาคือ 5xx และ 429",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 70, "lineWidth": 0, "drawStyle": "bars", "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "200" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "401" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
+          { "matcher": { "id": "byName", "options": "404" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "500" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byName", "options": "503" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "dark-red" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), status_code::text AS metric, count(*) AS c FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Error ที่ต้องไปแก้ (4xx/5xx ไม่รวม 401 กับ 404)",
+      "description": "ตัดเสียงรบกวนออก เหลือเฉพาะที่ผิดปกติจริง — ว่างเปล่า = ดี",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS ล่าสุด FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "วินิจฉัยสาเหตุ error อัตโนมัติ",
+      "description": "ตอบคำถาม 'ตกลง 401 นี้คืออะไร' — แยกจาก route_name (Kong หา route เจอไหม) กับ latency (0-1ms = Kong ตัดจบเอง ไม่ถึง backend)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 33 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "สาเหตุ" },
+            "properties": [{ "id": "custom.width", "value": 420 }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, route_name AS \"route ที่รับ\", status_code, CASE WHEN route_name IS NULL THEN '① ไม่มี route เลย — บอท/path มั่ว (Kong ตัดจบ ไม่ถึง backend)' WHEN status_code = 401 AND latency_ms <= 1 THEN '② Kong ปฏิเสธ — ไม่มี token / token หมดอายุ / iss ไม่ตรง' WHEN status_code = 401 THEN '③ backend ปฏิเสธ — token ผ่าน Kong แล้วแต่แอปไม่ยอมรับ' WHEN status_code = 404 THEN '④ ผ่าน gateway แล้วแต่ backend ไม่มี endpoint นี้ — path พิมพ์ผิด?' WHEN status_code = 429 THEN '⑤ ชน rate limit' WHEN status_code >= 500 THEN '⑥ backend พัง (ต้องแก้ด่วน)' ELSE '⑦ อื่น ๆ' END AS \"สาเหตุ\", count(*) AS hits, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 GROUP BY 1, 2, 3, 4 ORDER BY hits DESC LIMIT 25"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "⚠️ path ที่ผ่าน gateway แต่ backend ไม่รู้จัก",
+      "description": "ผลข้างเคียงของการใช้ path แบบ prefix — path พิมพ์ผิดที่ขึ้นต้นเหมือนเส้นจริงจะทะลุถึง backend แล้วได้ 404 กลับมา ตารางนี้จับตัวพวกนั้นให้",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 42 },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT split_part(path, '?', 1) AS \"path ที่ถูกเรียก\", route_name AS \"route ที่รับไป\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(consumer_username, 'anonymous') AS app, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "ใครยิง 404 เข้ามา (บอทสแกนช่องโหว่)",
+      "description": "IP แปลกหน้าที่ไล่หา path ที่ไม่มีอยู่จริง — ปกติของทุกเซิร์ฟเวอร์ที่เปิดพอร์ต 80 ไม่ต้องทำอะไรตราบใดที่ยังเป็น 404",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT client_ip, left(coalesce(user_agent, '(ไม่ระบุ)'), 45) AS user_agent, count(*) AS hits, left(string_agg(DISTINCT split_part(path, '?', 1), ', '), 90) AS paths FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 GROUP BY 1, 2 ORDER BY hits DESC LIMIT 15"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "การใช้งานรายแอป",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Request รายแอปตามเวลา",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), coalesce(consumer_username, 'anonymous') AS metric, count(*) AS requests FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "สรุปรายแอป",
+      "description": "ใช้ดูว่าแอปไหนกินทรัพยากรมากสุด และแอปไหนมี error เยอะผิดปกติ",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "bytes" },
+            "properties": [{ "id": "unit", "value": "bytes" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p95_ms" },
+            "properties": [{ "id": "unit", "value": "ms" }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(consumer_username, 'anonymous') AS app, count(*) AS calls, count(*) FILTER (WHERE status_code >= 400) AS errors, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, coalesce(sum(response_size), 0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Endpoint ที่ถูกเรียกบ่อยที่สุด",
+      "description": "ใช้ตัดสินใจว่าควรทำ cache ที่ไหน และเส้นไหนกระทบคนเยอะถ้าพัง",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 50 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p95_ms" }, "properties": [{ "id": "unit", "value": "ms" }] },
+          { "matcher": { "id": "byName", "options": "bytes_total" }, "properties": [{ "id": "unit", "value": "bytes" }] }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, count(DISTINCT consumer_username) AS apps, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, coalesce(sum(response_size), 0)::bigint AS bytes_total, count(*) FILTER (WHERE status_code >= 400) AS errors FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
+        }
+      ]
+    }
+  ]
+}

@@ -28,6 +28,17 @@ ADMIN = os.environ.get("KONG_ADMIN", "http://kong-gateway:8001")
 SERVICE = os.environ.get("KONG_SERVICE", "onelake-middleware")
 ISSUER = os.environ.get("JWT_ISSUER") or "onelake-app"
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
+
+# BEVProAPI (service.bevproasia.com) ออก token ให้ frontend ผ่าน /api/v1/Authen/dispatchtoken
+# โดยใส่ค่า Jwt:Issuer จาก appsettings เป็น claim iss — ไม่ใช่ "onelake-app"
+# Kong jwt plugin จับคู่ consumer จาก iss จึงต้องมี credential ของค่านี้ด้วย
+# ไม่งั้น token ที่แอปใช้อยู่จริงจะโดน 401 ทุกเส้น
+# secret ตัวเดียวกับ JWT_SECRET — middleware ตรวจ token ของ BEVProAPI ผ่านด้วย secret นี้อยู่แล้ว
+# (authMiddleware.js ทำแค่ jwt.verify(token, JWT_SECRET) ไม่เช็ค issuer)
+BEVPRO_ISSUER = os.environ.get("BEVPRO_JWT_ISSUER", "http://www.xxx.com")
+# ชื่อ consumer = ชื่อแอปที่เรียกเข้ามา (เปลี่ยนเป็น pro-iot-board เมื่อ 21 ก.ค. 2026)
+# ชื่อนี้คือค่าที่โผล่ในคอลัมน์ consumer ของ Grafana — ตั้งให้ตรงกับแอปจริงจะอ่านง่าย
+BEVPRO_CONSUMER = os.environ.get("BEVPRO_CONSUMER", "pro-iot-board")
 UPSTREAM = os.environ.get(
     "ONELAKE_UPSTREAM_URL",
     "https://onelake-middleware-hth2cxh5hfhwdxhs.southeastasia-01.azurewebsites.net",
@@ -138,6 +149,22 @@ def main():
             ("key", ISSUER), ("algorithm", "HS256"), ("secret", JWT_SECRET),
         ])
         print(f"  jwt credential -> HTTP {code}")
+
+    # consumer ที่สองสำหรับ token จาก BEVProAPI (ดูคอมเมนต์ที่ BEVPRO_ISSUER)
+    code, _ = req("PUT", f"{ADMIN}/consumers/{BEVPRO_CONSUMER}", [
+        ("custom_id", BEVPRO_CONSUMER), ("tags[]", "bevpro"),
+    ])
+    print(f"  consumer {BEVPRO_CONSUMER} -> HTTP {code}")
+    _, bcreds = req("GET", f"{ADMIN}/consumers/{BEVPRO_CONSUMER}/jwt")
+    if any(c.get("key") == BEVPRO_ISSUER for c in bcreds.get("data", [])):
+        print(f"  jwt credential ({BEVPRO_ISSUER}) exists")
+    elif not JWT_SECRET:
+        print("  WARN: JWT_SECRET empty — skip bevpro credential")
+    else:
+        code, _ = req("POST", f"{ADMIN}/consumers/{BEVPRO_CONSUMER}/jwt", [
+            ("key", BEVPRO_ISSUER), ("algorithm", "HS256"), ("secret", JWT_SECRET),
+        ])
+        print(f"  jwt credential ({BEVPRO_ISSUER}) -> HTTP {code}")
 
     print("[Routes from Swagger]")
     here = os.path.dirname(os.path.abspath(__file__))

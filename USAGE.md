@@ -1,7 +1,18 @@
 # คู่มือการใช้งาน — Kong API Gateway บน Azure VM
 
 > เซิร์ฟเวอร์: `WebApplication-kong-gateway` (Azure, 2 คอร์ / 3.8 GB RAM) — IP ถาวร: **20.6.32.81**
-> อัปเดตล่าสุด: 20 ก.ค. 2026
+> โดเมน: **bevprogateway.southeastasia.cloudapp.azure.com** (https พร้อมใช้)
+> อัปเดตล่าสุด: 21 ก.ค. 2026
+
+## 🔐 URL สำหรับ frontend
+
+```js
+const BASE = "https://bevprogateway.southeastasia.cloudapp.azure.com";
+```
+
+- SSL: Let's Encrypt หมดอายุ 19 ต.ค. 2026 — ต่ออายุอัตโนมัติผ่าน cron (`scripts/renew-ssl.sh` วันละ 2 ครั้ง)
+- `http://` ยังใช้ได้ (ไม่ได้ปิด) แต่ใช้ `https://` เสมอ ไม่งั้นเว็บที่เปิดด้วย https จะโดน mixed content บล็อก
+- route ทั้งหมด sync จาก Swagger อัตโนมัติ: `python3 scripts/sync-routes-from-swagger.py`
 
 ## 🚪 ตารางทางเข้าทั้งหมด
 
