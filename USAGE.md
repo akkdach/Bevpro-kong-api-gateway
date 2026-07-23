@@ -83,8 +83,8 @@ sh      scripts/add-jwt-user-plugin.sh                  # ติดตั้ง 
 
 | ระบบ | ชื่อผู้ใช้ | รหัสผ่าน |
 |---|---|---|
-| Grafana | `admin` | รีเซ็ตใหม่เมื่อ 20 ก.ค. 2026 — ไม่เก็บรหัสไว้ในไฟล์นี้ (ไฟล์นี้ขึ้น git ได้) ลืมแล้วรีเซ็ตใหม่ตามคำสั่งด้านล่าง |
-| Konga | `admin` | ดูในไฟล์ `konga-seed/userdb.data` บรรทัด `"password"` |
+| Grafana | `admin` | เปลี่ยนเมื่อ 23 ก.ค. 2026 — ลืมแล้วรีเซ็ตใหม่ตามคำสั่งด้านล่าง (รหัสจริงไม่เก็บในไฟล์นี้เพราะขึ้น git) |
+| Konga | `admin` | ดูในไฟล์ `konga-seed/userdb.data` บรรทัด `"password"` (gitignored) — เปลี่ยนรหัสต้องแก้ไฟล์นี้แล้ว re-seed |
 | Kong Manager / Prometheus | — | ไม่มีระบบล็อกอิน (ปลอดภัยเพราะเปิดเฉพาะ IP แอดมิน) |
 
 ลืมรหัส Grafana → รีเซ็ตทาง SSH (ได้ผลทันที ไม่ต้องรีสตาร์ท):
@@ -95,6 +95,22 @@ docker exec grafana grafana cli --homepath /usr/share/grafana admin reset-admin-
 
 > หมายเหตุ: ค่า `GF_SECURITY_ADMIN_PASSWORD` ใน docker-compose มีผลเฉพาะตอนสร้าง Grafana **ครั้งแรก** เท่านั้น
 > แก้ค่านั้นทีหลังแล้วรีสตาร์ทจะไม่เปลี่ยนรหัส — ต้องใช้คำสั่ง reset ข้างบน
+
+### เปลี่ยนรหัส Konga (ยุ่งกว่า Grafana)
+
+Konga เก็บรหัสแบบ hash ใน volume `konga_data` และสร้าง passport ใหม่ทุก login — **แก้ database ตรง ๆ ไม่ได้** (sails-disk เขียนทับ) วิธีที่ได้ผลจริง = re-seed จาก volume ว่าง:
+
+```bash
+# 1. แก้รหัสในไฟล์ seed
+#    konga-seed/userdb.data -> "password": "รหัสใหม่"
+# 2. ลบ volume แล้วให้ Konga seed ใหม่ (connection re-seed จาก kongnode.data ด้วย)
+cd /home/adminwebapp/kong
+docker compose stop konga && docker compose rm -f konga
+docker volume rm kong_konga_data
+docker compose up -d konga        # รอ ~40 วิ Konga จะ seed user + connection ใหม่
+```
+
+> ผลข้างเคียง: snapshots/settings ใน Konga หาย (ปกติไม่ได้ใช้) — user + connection ถูกสร้างใหม่จาก seed
 
 ## 🛠️ งานประจำของแอดมิน
 
