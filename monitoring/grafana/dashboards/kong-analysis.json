@@ -1489,6 +1489,201 @@
           "rawSql": "SELECT $__timeGroupAlias(request_time,'1h'), coalesce(consumer_username,'anonymous') AS metric, sum(coalesce(request_size,0)+coalesce(response_size,0)) AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1,2 ORDER BY 1"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "6 · Rate Limit — ใครใกล้ชนเพดาน",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 125 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "เรียกต่อนาที แยก route — เทียบเพดาน",
+      "description": "ทุก route พร้อมกัน · เส้นประแดง = เพดาน (มือถือ/global 2,000 · GPS 600) · เพดานนับแยกต่อ IP แต่กราฟรวมทุกคน · ชื่อ API รายเส้นดูกราฟแท่งด้านล่าง",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 126 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "min": 0,
+          "custom": { "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "stepAfter", "lineWidth": 2 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "เพดาน.*" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (increase(kong_http_requests_total[15m])) / 15",
+          "interval": "15m",
+          "legendFormat": "{{route}}"
+        },
+        {
+          "refId": "B",
+          "expr": "vector(2000)",
+          "legendFormat": "เพดาน มือถือ/global (2,000/นาที)"
+        },
+        {
+          "refId": "C",
+          "expr": "vector(600)",
+          "legendFormat": "เพดาน GPS (600/นาที)"
+        }
+      ]
+    },
+    {
+      "type": "bargauge",
+      "title": "API ไหนถูกเรียกเยอะสุด — Top 10 ของช่วงเวลาที่เลือก",
+      "description": "แท่งยาวสุด = ถูกเรียกเยอะสุด · ชื่อ API อยู่หน้าแท่ง อ่านได้เลยไม่ต้องชี้ · เปลี่ยนช่วงเวลาด้านบนขวา ตัวเลขคำนวณใหม่ตาม",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 146 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "semi-dark-blue", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": ["lastNotNull"],
+          "fields": "/^calls$/"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT left(path, 60) AS \"API\", count(*)::int AS calls FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "โดนปัดตก (429) — 1 ชม.ล่าสุด",
+      "description": "ควรเป็น 0 ในการใช้งานปกติ",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 126 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(kong_http_requests_total{code=\"429\"}[1h]))",
+          "legendFormat": "429"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "โดนปัดตก (429) — 24 ชม.ล่าสุด",
+      "description": "ยอดสะสมทั้งวัน — สูงเมื่อไหร่ ดูกราฟ 429 ด้านขวาว่า route ไหน ช่วงไหน",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 126 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(kong_http_requests_total{code=\"429\"}[24h]))",
+          "legendFormat": "429"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "429 ต่อนาที แยก route — ใครโดนเบรกบ้าง",
+      "description": "ศูนย์ตลอด = ไม่มีใครติด rate limit · มียอด = route นั้นมีคนชนเพดาน ดูตาราง IP ด้านล่างว่าใคร",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 136 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "min": 0,
+          "custom": { "fillOpacity": 20, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (rate(kong_http_requests_total{code=\"429\"}[5m])) * 60",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "IP ที่ยิงหนักสุด — 1 ชม.ล่าสุด (ใครกินโควตา)",
+      "description": "เพดานนับแยกต่อ IP — คอลัมน์ 'โดน 429' > 0 = IP นั้นชนเพดานแล้ว",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 10, "x": 14, "y": 131 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT client_ip AS \"IP\", coalesce(jwt_user, '-') AS \"ผู้ใช้\", count(*) AS calls, round(count(*) / 60.0, 1) AS \"เฉลี่ย/นาที\", count(*) FILTER (WHERE status_code = 429) AS \"โดน 429\" FROM kong_api_logs WHERE request_time >= now() - interval '1 hour' GROUP BY 1, 2 ORDER BY calls DESC LIMIT 15"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "title": "เพดานที่ตั้งไว้ตอนนี้ (อัปเดต 2026-08-03)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 155 },
+      "options": {
+        "mode": "markdown",
+        "content": "| ขอบเขต | เพดาน | นับแยกตาม | หมายเหตุ |\n|---|---|---|---|\n| **Global** (ทุก route ที่ไม่มีเพดานของตัวเอง) | 2,000/นาที + 50,000/ชั่วโมง | IP | ตาข่ายนิรภัยรวม |\n| **mb-prod-any** (แอปมือถือ BevPro) | 2,000/นาที + 50,000/ชั่วโมง | IP | ตั้งแยกเพื่อไม่ให้ global มากดเส้นมือถือ |\n| **gps-vehicle-tracking** | 600/นาที | IP | หน้า Dashboard GPS + แอปช่าง |\n| **mw-api-sync-\\*** (20 เส้น sync ข้อมูล) | 10/นาที | IP | งานเบื้องหลัง ยิงถี่ไม่ได้ |\n\n**การอ่านกราฟ:** เพดานนับ *แยกต่อ IP* แต่กราฟรวมทุกคน — เส้นรวมต่ำกว่าเพดานมาก = ปลอดภัยแน่นอน / เส้นรวมสูงใกล้เพดาน = อาจมีบาง IP ชนแล้ว ให้ดูตาราง IP ประกอบ\n\n**ถ้าแก้เพดานใน Kong แล้ว อย่าลืมกลับมาแก้ตารางนี้ด้วย** (ไฟล์ `monitoring/grafana/dashboards/kong-analysis.json` หมวด 6)"
+      }
     }
   ]
 }

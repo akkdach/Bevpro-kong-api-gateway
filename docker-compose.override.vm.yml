@@ -36,17 +36,49 @@ services:
           memory: 192M
 
   prometheus:
+    # external-url = ลิงก์ในหน้าเว็บชี้ผ่าน Kong /prometheus (HTTPS)
+    # route-prefix=/ = ตัวโปรแกรมยังเสิร์ฟที่ root -> Grafana datasource ภายใน (http://prometheus:9090) ไม่พัง
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
       - "--storage.tsdb.retention.size=2GB"   # กันดิสก์เต็ม — อันไหนถึงก่อนใช้อันนั้น
+      - "--web.external-url=https://bevprogateway.southeastasia.cloudapp.azure.com/prometheus"
+      - "--web.route-prefix=/"
     deploy:
       resources:
         limits:
           memory: 512M
 
   grafana:
+    # เสิร์ฟผ่าน Kong ที่ path /grafana -> ได้ HTTPS จากใบรับรวมของ gateway
+    # (route ฝั่ง Kong ชื่อ grafana-admin จำกัด IP แอดมินด้วย ip-restriction)
+    environment:
+      GF_SERVER_ROOT_URL: "https://bevprogateway.southeastasia.cloudapp.azure.com/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     deploy:
       resources:
         limits:
           memory: 384M
+
+  # ─────────────────────────────────────────────
+  # 🔌 pg-bridge — เปิดพอร์ต 5432 ให้ pgAdmin ต่อจากออฟฟิศ (NSG กรอง IP แล้ว)
+  # เดิมเป็น container เดี่ยวนอก compose -> ขวาง docker compose down
+  # ("network has active endpoints") ย้ายเข้า compose เพื่อให้รื้อ-ตั้งพร้อมกัน
+  # ก่อน up ครั้งแรก ต้องลบตัวเดี่ยวเก่าก่อน: docker rm -f pg-bridge
+  # ─────────────────────────────────────────────
+  pg-bridge:
+    image: alpine/socat
+    container_name: pg-bridge
+    restart: unless-stopped
+    command: tcp-listen:5432,fork,reuseaddr tcp:kong-database:5432
+    ports:
+      - "5432:5432"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - kong-net
+    deploy:
+      resources:
+        limits:
+          memory: 64M
