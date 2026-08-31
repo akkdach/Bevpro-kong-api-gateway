@@ -1,0 +1,183 @@
+{
+  "uid": "kong-upload-drill",
+  "title": "Kong — ปริมาณข้อมูลราย endpoint / รายพนักงาน",
+  "tags": ["kong", "upload", "bandwidth"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "",
+  "time": { "from": "now-7d", "to": "now" },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "path",
+        "label": "Endpoint",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "konglogs" },
+        "query": "SELECT regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "definition": "endpoint ที่ Kong มี route รับ (ตัด bot scan ออก) ในช่วงเวลาที่เลือก เรียงจากเรียกมาก→น้อย · ตัวเลขใน path ถูกยุบเป็น {id}",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "current": { "selected": true, "text": ["/prod/api/v1/upload"], "value": ["/prod/api/v1/upload"] },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "จำนวนครั้งที่เรียก",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*)::int AS calls FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลขาขึ้น (upload) รวม",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(request_size), 0)::bigint AS upload FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลขาลง (download) รวม",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(response_size), 0)::bigint AS download FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "จำนวนพนักงานที่ใช้",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT coalesce(jwt_user, 'ไม่ทราบ'))::int AS users FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top 15 พนักงานที่ส่งข้อมูลขึ้นมากสุด — $path",
+      "description": "แท่งยาวสุด = ส่งข้อมูลขึ้นเยอะสุดในช่วงเวลาที่เลือก",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "อัปโหลด" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "min", "value": 0 },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "รหัสพนักงาน" },
+            "properties": [{ "id": "custom.width", "value": 130 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", sum(request_size)::bigint AS \"อัปโหลด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1 ORDER BY 2 DESC LIMIT 15"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ปริมาณขาขึ้นตามเวลา (รายชั่วโมง) — $path",
+      "description": "ช่วงไหนพีค = ช่วงนั้นช่างส่งรูปเยอะ (ปกติหลังปิดงาน)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "fillOpacity": 30, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time, '1h'), 'อัปโหลด (ขาขึ้น)' AS metric, sum(coalesce(request_size, 0)) AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "รายพนักงาน — ครบทุกคน (เรียงตามอัปโหลดมาก→น้อย)",
+      "description": "คลิกหัวคอลัมน์เพื่อเรียงใหม่ · เปลี่ยนช่วงเวลามุมขวาบน ตัวเลขคำนวณใหม่ตาม",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "อัปโหลดรวม" },
+            "properties": [{ "id": "unit", "value": "bytes" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ดาวน์โหลดรวม" },
+            "properties": [{ "id": "unit", "value": "bytes" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "เฉลี่ย/ครั้ง" },
+            "properties": [{ "id": "unit", "value": "bytes" }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", count(*)::int AS \"กี่ครั้ง\", sum(coalesce(request_size, 0))::bigint AS \"อัปโหลดรวม\", sum(coalesce(response_size, 0))::bigint AS \"ดาวน์โหลดรวม\", (sum(coalesce(request_size, 0)) / greatest(count(*), 1))::bigint AS \"เฉลี่ย/ครั้ง\", count(*) FILTER (WHERE status_code >= 400)::int AS \"ล้มเหลว\", count(DISTINCT device_id)::int AS \"กี่เครื่อง\", to_char(max(request_time), 'DD Mon HH24:MI') AS \"ใช้ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1 ORDER BY sum(coalesce(request_size, 0)) DESC"
+        }
+      ]
+    }
+  ]
+}

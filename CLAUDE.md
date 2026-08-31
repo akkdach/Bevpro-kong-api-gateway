@@ -57,6 +57,7 @@ ssh -i "$env:USERPROFILE\.ssh\kong_vm" adminwebapp@20.6.32.81 "sudo -n mv /home/
 
 - **ห้าม `docker compose down -v` เด็ดขาด** — `-v` ลบ volume = config + log ของ gateway หายถาวร (กฎเหล็กใน `DEPLOY.md`)
 - **ห้ามเก็บ JWT ทั้งใบลง log** — BEVProAPI ใส่รหัสผ่านผู้ใช้ไว้ใน claim `email` ดึงเฉพาะ `sub` เท่านั้น (`USAGE.md`)
+- **ห้ามถอด redaction ของ `request_body`** ใน `scripts/add-jwt-user-plugin.sh` — body `/Authen/token` = username+password จริง · body เก็บเฉพาะ JSON/form ≤ 4 KB และถูกล้างเมื่อเกิน 30 วันโดย cron `scripts/purge-log-bodies.sh` ห้ามปิด cron นี้ (PII + disk)
 - **ห้ามลบ route `acme-challenge`** — ลบแล้วต่ออายุ SSL ไม่ได้ ใบรับรองหมด = https ทั้งระบบล่ม
 - **ห้ามชี้ Konga ไป PostgreSQL 12+** — sails-postgresql เก่าใช้คอลัมน์ `pg_attrdef.adsrc` ที่ถูกถอดแล้ว crash ตอน start (จึงใช้ sails-disk + volume `konga_data`)
 - **ห้าม commit secret** — `.env` (root และ `onelake-middleware/`) กับ `konga-seed/userdb.data` ถูก gitignore ไว้แล้ว เขียนในเอกสารได้แค่ชื่อ key (`GRAFANA_ADMIN_PASSWORD`, `KONGA_ADMIN_PASSWORD`, `JWT_SECRET`)

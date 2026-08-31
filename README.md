@@ -194,9 +194,14 @@ curl.exe -s -X PATCH "http://localhost:8001/plugins/$($p.id)" --data "enabled=fa
 
 - Kong พ่น metrics ที่ status listener `:8100/metrics` (เปิด `per_consumer=true`)
 - Prometheus (`:9090`) scrape ทุก 15 วินาที เก็บย้อนหลัง 30 วัน
-- Grafana (`:3000`) auto-provision 2 dashboards ในโฟลเดอร์ "Kong":
-  - **Kong (official)** — ภาพรวม request rate, latency, bandwidth
-  - **Kong — Per-Consumer Overview** — req/s, 429, bandwidth แยกราย Consumer
+- Grafana (`:3000`, บน VM เข้าผ่าน `https://<gateway>/grafana`) auto-provision dashboards จาก `monitoring/grafana/dashboards/*.json` ในโฟลเดอร์ "Kong" (reload เองทุก 30 วิ):
+  - **Kong (official)** — ภาพรวม request rate, latency, bandwidth (Prometheus)
+  - **Kong — Per-Consumer Overview** — req/s, 429, bandwidth แยกราย Consumer (Prometheus)
+  - **Kong — Traffic & Logs** — metrics สด + log ล่าสุดจากตาราง `kong_api_logs`
+  - **Kong — Deep Analysis** — ภาพรวม/การใช้งาน/ความเร็ว/error/โควตาเน็ต/rate limit (จาก log)
+  - **Kong — ปริมาณข้อมูลราย endpoint / รายพนักงาน** (`kong-upload-drill`) — เลือก endpoint แล้วดู upload/download รายพนักงาน
+  - **Kong — ใครยิงอะไร** (`kong-who-calls-what`) — dropdown IP · ชนิดแอป · user · endpoint กรองทุก panel + log ดิบ (ใช้ตอบ "เครื่องไหนยิงเส้นไหน")
+- dashboard ที่อ่านจาก log ใช้ datasource Postgres uid `konglogs` · `request_body` ไม่ได้เก็บ (log-receiver ตั้ง null)
 - ข้อจำกัด OSS: label `consumer` มีเฉพาะ request count + bandwidth (latency ได้ละเอียดสุดราย service/route)
 
 ## ⚙️ การปรับแต่ง

@@ -6,6 +6,12 @@
 # ═══════════════════════════════════════════════════════════════
 services:
   kong:
+    # soap.bevproasia.com = เครื่อง IIS ตัวเดียวกับ service.bevproasia.com (public 20.33.118.76)
+    # override ให้ Kong resolve เป็น private IP ใน VNet -> upstream inbound-mobile (:88) วิ่งภายใน
+    # ไม่ออก public โดยที่ SNI/hostname ยังถูกต้อง (binding IIS บังคับชื่อ ยิงด้วย IP โดน 400)
+    # ถ้าเครื่อง IIS เปลี่ยน private IP ต้องแก้ค่านี้ตาม
+    extra_hosts:
+      - "soap.bevproasia.com:10.0.0.4"
     environment:
       KONG_NGINX_WORKER_PROCESSES: "2"   # fix เท่าจำนวน core (กัน resize VM แล้ว auto เปิด worker เพิ่มจนกิน RAM)
       KONG_MEM_CACHE_SIZE: "128m"

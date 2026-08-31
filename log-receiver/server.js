@@ -45,9 +45,9 @@ let isShuttingDown = false;
 const INSERT_SQL = `
   INSERT INTO kong_api_logs
     (request_id, client_ip, method, path, status_code, latency_ms,
-     consumer_username, user_agent, device_id, jwt_user, request_body, request_size, response_size,
+     consumer_username, user_agent, device_id, jwt_user, app_name, request_body, request_size, response_size,
      service_name, route_name, request_time)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
   ON CONFLICT (request_id) DO NOTHING
 `;
 
@@ -63,6 +63,7 @@ function toParams(item) {
     item.user_agent,
     item.device_id,
     item.jwt_user,
+    item.app_name,
     item.request_body,
     item.request_size,
     item.response_size,
@@ -142,7 +143,12 @@ function parseKongLog(log) {
         log.jwt_sub || jwtUser(log.request?.headers?.authorization),
         100
       ),
-      request_body: null, // ไม่เก็บ body เพื่อประหยัดพื้นที่
+      // แอปไหนยิงมา — frontend แต่ละตัวใส่ header X-App-Name ที่ api client กลาง
+      // (consumer/JWT แยกไม่ได้เพราะทุกแอปใช้ token ชุดเดียวกัน) — แอปเก่าที่ยังไม่ใส่ = NULL
+      app_name: clean(log.request?.headers?.["x-app-name"] || null, 100),
+      // body มาจาก pre-function ของ Kong (field request_body) — redact/mask/ตัด 4 KB แล้วที่ Kong
+      // ดู scripts/add-jwt-user-plugin.sh · http-log เองไม่ส่ง body · null = ไม่ใช่ JSON/form หรือ > 8 KB
+      request_body: clean(log.request_body || null, 4200),
       // ปริมาณข้อมูลขาเข้า/ขาออก — ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL 4.2)
       // Kong ส่ง request.size มาให้อยู่แล้ว แต่เดิมเก็บแค่ response.size
       request_size: log.request?.size || 0,

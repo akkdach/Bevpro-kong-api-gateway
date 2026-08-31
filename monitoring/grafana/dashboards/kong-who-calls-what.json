@@ -1,0 +1,1149 @@
+{
+  "uid": "kong-who-calls-what",
+  "title": "Kong — ใครยิงอะไร (IP · แอป · user · endpoint)",
+  "tags": [
+    "kong",
+    "traffic",
+    "audit"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "ip",
+        "label": "IP ต้นทาง",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT client_ip AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "definition": "ค่าที่พบจริงในช่วงเวลาที่เลือก เรียงจากมาก→น้อย",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "app",
+        "label": "ชนิดแอป",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "definition": "ค่าที่พบจริงในช่วงเวลาที่เลือก เรียงจากมาก→น้อย",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "user",
+        "label": "ผู้ใช้ (JWT)",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT coalesce(jwt_user, 'ไม่ทราบ') AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "definition": "ค่าที่พบจริงในช่วงเวลาที่เลือก เรียงจากมาก→น้อย",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "path",
+        "label": "Endpoint",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "definition": "ค่าที่พบจริงในช่วงเวลาที่เลือก เรียงจากมาก→น้อย",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "appname",
+        "label": "แอป (X-App-Name)",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT coalesce(app_name, '(ไม่ระบุ)') AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' GROUP BY 1 ORDER BY count(*) DESC",
+        "definition": "จาก header X-App-Name ที่ api client ของแต่ละ frontend ใส่มา · (ไม่ระบุ) = แอปเวอร์ชันเก่า/ยังไม่ใส่ header",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "1 · ภาพรวม — ตัวเลขทั้งหมดคำนวณตาม dropdown ด้านบน",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "จำนวน request",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*)::int FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "IP ต้นทาง (กี่เครื่อง/เครือข่าย)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT client_ip)::int FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "ผู้ใช้ (จาก JWT)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT jwt_user)::int FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "อุปกรณ์ (device_id)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT device_id)::int FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "endpoint ที่ถูกเรียก",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g'))::int FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลรวม (ขึ้น+ลง)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "yellow"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path)"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      }
+    },
+    {
+      "type": "row",
+      "title": "2 · ใครยิง → เส้นไหน",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "type": "table",
+      "title": "IP ต้นทาง × endpoint — ใครยิงเส้นไหน กี่ครั้ง",
+      "description": "แต่ละแถว = IP หนึ่ง ยิง endpoint หนึ่ง · เลือก IP ใน dropdown ด้านบนเพื่อดูเฉพาะเครื่องนั้น",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP ต้นทาง"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "consumer"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT client_ip AS \"IP ต้นทาง\", CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS \"ชนิดแอป\", coalesce(consumer_username,'anonymous') AS \"consumer\", method AS \"method\", regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') AS \"endpoint\", count(*)::int AS \"กี่ครั้ง\", count(*) FILTER (WHERE status_code >= 400)::int AS \"ล้มเหลว\", count(DISTINCT jwt_user)::int AS \"กี่ user\", sum(coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\", to_char(max(request_time), 'DD Mon HH24:MI') AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1,2,3,4,5 ORDER BY 6 DESC LIMIT 200"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 14,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "type": "table",
+      "title": "สรุปราย IP — เครื่องไหนยิงหนักสุด",
+      "description": "IP เดียวกันอาจเป็นหลายคน (ออฟฟิศ/NAT เดียวกัน) ดูคอลัมน์ \"กี่ user\" ประกอบ",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP ต้นทาง"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT client_ip AS \"IP ต้นทาง\", CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS \"ชนิดแอป\", count(*)::int AS \"กี่ครั้ง\", count(DISTINCT jwt_user)::int AS \"กี่ user\", count(DISTINCT device_id)::int AS \"กี่เครื่อง\", count(DISTINCT regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g'))::int AS \"กี่ endpoint\", sum(coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\", to_char(max(request_time), 'DD Mon HH24:MI') AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1,2 ORDER BY 3 DESC LIMIT 100"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 10,
+        "x": 14,
+        "y": 6
+      }
+    },
+    {
+      "type": "row",
+      "title": "3 · แยกตามชนิดแอป และ endpoint",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "request ตามเวลา แยกชนิดแอป (รายชั่วโมง)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 25,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time, '1h'), CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS metric, count(*) AS requests FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      }
+    },
+    {
+      "type": "table",
+      "title": "สรุปราย endpoint — เส้นไหนถูกเรียกจากที่ไหนบ้าง",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT method AS \"method\", regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') AS \"endpoint\", count(*)::int AS \"กี่ครั้ง\", count(DISTINCT client_ip)::int AS \"กี่ IP\", count(DISTINCT jwt_user)::int AS \"กี่ user\", count(*) FILTER (WHERE status_code >= 400)::int AS \"ล้มเหลว\", coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS \"p95\", sum(coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1,2 ORDER BY 3 DESC LIMIT 100"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      }
+    },
+    {
+      "type": "row",
+      "title": "4 · ใคร (user) / เครื่องไหน",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      }
+    },
+    {
+      "type": "table",
+      "title": "สรุปราย user + เครื่อง",
+      "description": "user เดียวกันใช้หลายเครื่อง หรือเครื่องเดียวหลาย user จะเห็นแยกแถว",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "รหัสพนักงาน"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", coalesce(device_id,'(ไม่ระบุ)') AS \"device_id\", CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS \"ชนิดแอป\", count(DISTINCT client_ip)::int AS \"กี่ IP\", count(*)::int AS \"กี่ครั้ง\", count(DISTINCT regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g'))::int AS \"กี่ endpoint\", count(*) FILTER (WHERE status_code >= 400)::int AS \"ล้มเหลว\", sum(coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\", to_char(max(request_time), 'DD Mon HH24:MI') AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1,2,3 ORDER BY 5 DESC LIMIT 100"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 30
+      }
+    },
+    {
+      "type": "table",
+      "title": "สรุปรายชนิดแอป",
+      "description": "จัดกลุ่มจาก header User-Agent",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS \"ชนิดแอป\", coalesce(consumer_username,'anonymous') AS \"consumer\", count(*)::int AS \"กี่ครั้ง\", count(DISTINCT client_ip)::int AS \"กี่ IP\", count(DISTINCT jwt_user)::int AS \"กี่ user\", count(DISTINCT device_id)::int AS \"กี่เครื่อง\", sum(coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1,2 ORDER BY 3 DESC"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 30
+      }
+    },
+    {
+      "type": "row",
+      "title": "5 · รายการ request ดิบ ทั้งวัน (ตาม dropdown)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Log ทีละ request",
+      "description": "path แสดงเต็มรวม query string · คอลัมน์ body: เอาเมาส์ชี้แล้วกดไอคอนขยายเพื่อดูเต็ม · แสดงทุกแถวในช่วงเวลาที่เลือก (cap 150,000 แถว ≈ 1 วันเต็มของ log ทั้งระบบ — ถ้าชน cap ให้ย่อช่วงเวลา) · กรอง: ไอคอนกรวยที่หัวคอลัมน์ · body ย่อบรรทัดเดียว — เอาเมาส์ชี้เซลล์ body จะมีไอคอนขยาย (มุมขวาของเซลล์) กดเพื่อดูเต็ม/copy · Export Excel: เมนู ⋮ → Inspect → Data → เปิด \"Download for Excel\" → Download CSV",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ข้อมูล"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "รหัสพนักงาน"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 400
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "body"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 320
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", client_ip AS \"IP\", coalesce(app_name, '(ไม่ระบุ)') AS \"แอป\", CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END AS \"ชนิดแอป\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", coalesce(device_id,'') AS \"device_id\", method AS \"method\", path AS \"path (เต็ม)\", status_code AS \"status\", latency_ms AS \"latency\", (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS \"ข้อมูล\", coalesce(request_body,'') AS \"body\", route_name AS \"route\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) ORDER BY request_time DESC LIMIT 150000"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      }
+    },
+    {
+      "type": "table",
+      "title": "เฉพาะ request ที่มี body (POST/PUT/PATCH ที่เป็น JSON/form ≤ 4 KB)",
+      "description": "เก็บตั้งแต่ 2026-08-21 · /Authen/token เก็บเป็น [REDACTED login] · field password/pwd ถูก mask เป็น *** · upload รูป (> 8 KB) ไม่เก็บ · ล้างอัตโนมัติเมื่อเกิน 30 วัน · แสดงทุกแถวในช่วงเวลาที่เลือก (cap 150,000 แถว ≈ 1 วันเต็มของ log ทั้งระบบ — ถ้าชน cap ให้ย่อช่วงเวลา) · กรอง: ไอคอนกรวยที่หัวคอลัมน์ · body ย่อบรรทัดเดียว — เอาเมาส์ชี้เซลล์ body จะมีไอคอนขยาย (มุมขวาของเซลล์) กดเพื่อดูเต็ม/copy · Export Excel: เมนู ⋮ → Inspect → Data → เปิด \"Download for Excel\" → Download CSV",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ขนาด"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "รหัสพนักงาน"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 400
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "body"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 320
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", client_ip AS \"IP\", coalesce(app_name, '(ไม่ระบุ)') AS \"แอป\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", method AS \"method\", split_part(path,'?',1) AS \"path\", status_code AS \"status\", request_size AS \"ขนาด\", request_body AS \"body\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' AND coalesce(app_name, '(ไม่ระบุ)') IN ($appname) AND client_ip IN ($ip) AND CASE WHEN user_agent LIKE 'okhttp/%' THEN 'Mobile App (Android)' WHEN user_agent LIKE '%CFNetwork%' OR user_agent LIKE '%Darwin%' THEN 'Mobile App (iOS)' WHEN user_agent LIKE 'Mozilla/%' AND user_agent LIKE '%Windows%' THEN 'Web Browser (Windows)' WHEN user_agent LIKE 'Mozilla/%' AND (user_agent LIKE '%Android%' OR user_agent LIKE '%iPhone%') THEN 'Web Browser (มือถือ)' WHEN user_agent LIKE 'Mozilla/%' THEN 'Web Browser (อื่นๆ)' WHEN user_agent LIKE 'curl/%' OR user_agent LIKE 'PostmanRuntime/%' OR user_agent LIKE 'python-requests/%' THEN 'เครื่องมือทดสอบ (curl/Postman)' WHEN user_agent IS NULL OR user_agent = '' THEN '(ไม่ระบุ)' ELSE 'Bot / อื่นๆ' END IN ($app) AND coalesce(jwt_user, 'ไม่ทราบ') IN ($user) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) AND request_body IS NOT NULL ORDER BY request_time DESC LIMIT 150000"
+        }
+      ],
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      }
+    }
+  ]
+}

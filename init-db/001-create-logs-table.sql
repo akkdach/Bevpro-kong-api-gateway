@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS kong_api_logs (
     device_id           VARCHAR(100),
     -- ชื่อผู้ใช้จาก claim sub ใน JWT (เก็บเฉพาะ sub ห้ามเก็บทั้ง token)
     jwt_user            VARCHAR(100),
+    -- header X-App-Name จาก api client ของแต่ละ frontend — แยกว่าแอปไหนยิง
+    -- (consumer แยกไม่ได้ ทุกแอปใช้ token ชุดเดียวกัน) · แอปที่ยังไม่ใส่ header = NULL
+    -- ตารางเดิมบน VM เพิ่มด้วย: ALTER TABLE kong_api_logs ADD COLUMN IF NOT EXISTS app_name VARCHAR(100);
+    app_name            VARCHAR(100),
     request_body        TEXT,
     -- ปริมาณข้อมูลเข้า/ออก ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL ข้อ 4.2)
     request_size        INT,

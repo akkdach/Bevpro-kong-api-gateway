@@ -220,7 +220,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(DISTINCT consumer_username) AS apps FROM kong_api_logs WHERE $__timeFilter(request_time) AND consumer_username <> 'anonymous'"
+          "rawSql": "SELECT count(DISTINCT coalesce(app_name, nullif(consumer_username, 'anonymous')))::int AS apps FROM kong_api_logs WHERE $__timeFilter(request_time)"
         }
       ]
     },
@@ -295,7 +295,7 @@
         {
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), coalesce(consumer_username,'anonymous') AS metric, count(*) AS calls FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1, 2 ORDER BY 1"
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), coalesce(app_name, consumer_username, 'anonymous') AS metric, count(*) AS calls FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1, 2 ORDER BY 1"
         }
       ]
     },
@@ -314,7 +314,11 @@
         "y": 7
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -346,7 +350,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(consumer_username,'anonymous') AS app, count(*) AS calls, count(*) FILTER (WHERE status_code < 400) AS ok, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 20"
+          "rawSql": "SELECT coalesce(app_name, consumer_username, 'anonymous') AS app, count(*) AS calls, count(*) FILTER (WHERE status_code < 400) AS ok, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 20"
         }
       ]
     },
@@ -365,7 +369,11 @@
         "y": 15
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -477,7 +485,11 @@
         "y": 24
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -528,7 +540,11 @@
         "y": 33
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -594,7 +610,183 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT request_time AS เวลา, coalesce(consumer_username,'anonymous') AS app, method, split_part(path,'?',1) AS path, status_code AS status, latency_ms, (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS bytes, route_name FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 100"
+          "rawSql": "SELECT request_time AS เวลา, coalesce(app_name, consumer_username, 'anonymous') AS app, method, split_part(path,'?',1) AS path, status_code AS status, latency_ms, (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS bytes, route_name FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 100"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "2b · Request body ทั้งวัน",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Request body — แอปส่งอะไรมา (POST/PUT/PATCH ที่เป็น JSON/form ≤ 4 KB)",
+      "description": "เก็บตั้งแต่ 2026-08-21 · เอาเมาส์ชี้ช่อง body แล้วกดไอคอนขยายเพื่อดูเต็ม · เส้น login (/Authen/token, /auth/azure-login) เก็บเป็น [REDACTED login] · field password/pwd ถูก mask *** · upload รูป (> 8 KB) ไม่เก็บ · ล้างอัตโนมัติเมื่อเกิน 30 วัน · ดูแบบกรองราย IP/user/endpoint ได้ที่ dashboard \"Kong — ใครยิงอะไร\" · แสดงทุกแถวในช่วงเวลาที่เลือก (cap 150,000 แถว ≈ 1 วันเต็มของ log ทั้งระบบ — ถ้าชน cap ให้ย่อช่วงเวลา) · กรอง: ไอคอนกรวยที่หัวคอลัมน์ · body ย่อบรรทัดเดียว — เอาเมาส์ชี้เซลล์ body จะมีไอคอนขยาย (มุมขวาของเซลล์) กดเพื่อดูเต็ม/copy · Export Excel: เมนู ⋮ → Inspect → Data → เปิด \"Download for Excel\" → Download CSV",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 22,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ขนาด"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "รหัสพนักงาน"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 400
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "body"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 320
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", client_ip AS \"IP\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", method AS \"method\", split_part(path,'?',1) AS \"path\", status_code AS \"status\", request_size AS \"ขนาด\", request_body AS \"body\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND request_body IS NOT NULL AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' ORDER BY request_time DESC LIMIT 150000"
         }
       ]
     },
@@ -605,7 +797,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 67
       },
       "collapsed": false
     },
@@ -621,12 +813,13 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 68
       },
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "align": "auto"
+            "align": "auto",
+            "filterable": true
           }
         },
         "overrides": [
@@ -714,7 +907,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 68
       },
       "fieldConfig": {
         "defaults": {
@@ -746,7 +939,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 54
+        "y": 77
       },
       "fieldConfig": {
         "defaults": {
@@ -781,7 +974,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 54
+        "y": 77
       },
       "fieldConfig": {
         "defaults": {
@@ -810,7 +1003,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 85
       },
       "collapsed": false
     },
@@ -826,7 +1019,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 86
       },
       "fieldConfig": {
         "defaults": {
@@ -937,7 +1130,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 86
       },
       "targets": [
         {
@@ -945,7 +1138,15 @@
           "rawQuery": true,
           "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS ล่าสุด FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "table",
@@ -959,10 +1160,14 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 94
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -998,7 +1203,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 103
       },
       "targets": [
         {
@@ -1006,7 +1211,15 @@
           "rawQuery": true,
           "rawSql": "SELECT split_part(path, '?', 1) AS \"path ที่ถูกเรียก\", route_name AS \"route ที่รับไป\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(consumer_username, 'anonymous') AS app, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "table",
@@ -1020,7 +1233,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 110
       },
       "targets": [
         {
@@ -1028,7 +1241,15 @@
           "rawQuery": true,
           "rawSql": "SELECT client_ip, left(coalesce(user_agent, '(ไม่ระบุ)'), 45) AS user_agent, count(*) AS hits, left(string_agg(DISTINCT split_part(path, '?', 1), ', '), 90) AS paths FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NULL GROUP BY 1, 2 ORDER BY hits DESC LIMIT 15"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "row",
@@ -1037,7 +1258,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 118
       },
       "collapsed": false
     },
@@ -1053,7 +1274,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 96
+        "y": 119
       },
       "fieldConfig": {
         "defaults": {
@@ -1085,7 +1306,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 96
+        "y": 119
       },
       "fieldConfig": {
         "defaults": {
@@ -1116,7 +1337,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 96
+        "y": 119
       },
       "fieldConfig": {
         "defaults": {
@@ -1148,7 +1369,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 96
+        "y": 119
       },
       "fieldConfig": {
         "defaults": {
@@ -1192,10 +1413,14 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 101
+        "y": 124
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -1298,10 +1523,14 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 101
+        "y": 124
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -1404,10 +1633,14 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 132
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -1467,7 +1700,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 117
+        "y": 140
       },
       "fieldConfig": {
         "defaults": {
@@ -1486,35 +1719,74 @@
         {
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroupAlias(request_time,'1h'), coalesce(consumer_username,'anonymous') AS metric, sum(coalesce(request_size,0)+coalesce(response_size,0)) AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1,2 ORDER BY 1"
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'1h'), coalesce(app_name, consumer_username, 'anonymous') AS metric, sum(coalesce(request_size,0)+coalesce(response_size,0)) AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1,2 ORDER BY 1"
         }
       ]
     },
     {
       "type": "row",
       "title": "6 · Rate Limit — ใครใกล้ชนเพดาน",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 125 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 148
+      },
       "collapsed": false
     },
     {
       "type": "timeseries",
       "title": "เรียกต่อนาที แยก route — เทียบเพดาน",
       "description": "ทุก route พร้อมกัน · เส้นประแดง = เพดาน (มือถือ/global 2,000 · GPS 600) · เพดานนับแยกต่อ IP แต่กราฟรวมทุกคน · ชื่อ API รายเส้นดูกราฟแท่งด้านล่าง",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 126 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 149
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "reqpm",
           "min": 0,
-          "custom": { "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "stepAfter", "lineWidth": 2 }
+          "custom": {
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": "เพดาน.*" },
+            "matcher": {
+              "id": "byRegexp",
+              "options": "เพดาน.*"
+            },
             "properties": [
-              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
-              { "id": "custom.fillOpacity", "value": 0 },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
             ]
           }
         ]
@@ -1542,15 +1814,28 @@
       "type": "bargauge",
       "title": "API ไหนถูกเรียกเยอะสุด — Top 10 ของช่วงเวลาที่เลือก",
       "description": "แท่งยาวสุด = ถูกเรียกเยอะสุด · ชื่อ API อยู่หน้าแท่ง อ่านได้เลยไม่ต้องชี้ · เปลี่ยนช่วงเวลาด้านบนขวา ตัวเลขคำนวณใหม่ตาม",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 146 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 169
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "min": 0,
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "semi-dark-blue", "value": null }]
+            "steps": [
+              {
+                "color": "semi-dark-blue",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": []
@@ -1561,7 +1846,9 @@
         "showUnfilled": true,
         "reduceOptions": {
           "values": true,
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "/^calls$/"
         }
       },
@@ -1578,24 +1865,45 @@
       "type": "stat",
       "title": "โดนปัดตก (429) — 1 ชม.ล่าสุด",
       "description": "ควรเป็น 0 ในการใช้งานปกติ",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 126 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 149
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 100 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
             ]
           }
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
         "colorMode": "background"
       },
       "targets": [
@@ -1610,24 +1918,45 @@
       "type": "stat",
       "title": "โดนปัดตก (429) — 24 ชม.ล่าสุด",
       "description": "ยอดสะสมทั้งวัน — สูงเมื่อไหร่ ดูกราฟ 429 ด้านขวาว่า route ไหน ช่วงไหน",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 126 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 149
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 1000 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
             ]
           }
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
         "colorMode": "background"
       },
       "targets": [
@@ -1642,13 +1971,24 @@
       "type": "timeseries",
       "title": "429 ต่อนาที แยก route — ใครโดนเบรกบ้าง",
       "description": "ศูนย์ตลอด = ไม่มีใครติด rate limit · มียอด = route นั้นมีคนชนเพดาน ดูตาราง IP ด้านล่างว่าใคร",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 136 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 159
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "reqpm",
           "min": 0,
-          "custom": { "fillOpacity": 20, "showPoints": "never" }
+          "custom": {
+            "fillOpacity": 20,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
@@ -1664,9 +2004,24 @@
       "type": "table",
       "title": "IP ที่ยิงหนักสุด — 1 ชม.ล่าสุด (ใครกินโควตา)",
       "description": "เพดานนับแยกต่อ IP — คอลัมน์ 'โดน 429' > 0 = IP นั้นชนเพดานแล้ว",
-      "datasource": { "type": "postgres", "uid": "konglogs" },
-      "gridPos": { "h": 10, "w": 10, "x": 14, "y": 131 },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 154
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
@@ -1679,7 +2034,12 @@
     {
       "type": "text",
       "title": "เพดานที่ตั้งไว้ตอนนี้ (อัปเดต 2026-08-03)",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 155 },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 178
+      },
       "options": {
         "mode": "markdown",
         "content": "| ขอบเขต | เพดาน | นับแยกตาม | หมายเหตุ |\n|---|---|---|---|\n| **Global** (ทุก route ที่ไม่มีเพดานของตัวเอง) | 2,000/นาที + 50,000/ชั่วโมง | IP | ตาข่ายนิรภัยรวม |\n| **mb-prod-any** (แอปมือถือ BevPro) | 2,000/นาที + 50,000/ชั่วโมง | IP | ตั้งแยกเพื่อไม่ให้ global มากดเส้นมือถือ |\n| **gps-vehicle-tracking** | 600/นาที | IP | หน้า Dashboard GPS + แอปช่าง |\n| **mw-api-sync-\\*** (20 เส้น sync ข้อมูล) | 10/นาที | IP | งานเบื้องหลัง ยิงถี่ไม่ได้ |\n\n**การอ่านกราฟ:** เพดานนับ *แยกต่อ IP* แต่กราฟรวมทุกคน — เส้นรวมต่ำกว่าเพดานมาก = ปลอดภัยแน่นอน / เส้นรวมสูงใกล้เพดาน = อาจมีบาง IP ชนแล้ว ให้ดูตาราง IP ประกอบ\n\n**ถ้าแก้เพดานใน Kong แล้ว อย่าลืมกลับมาแก้ตารางนี้ด้วย** (ไฟล์ `monitoring/grafana/dashboards/kong-analysis.json` หมวด 6)"

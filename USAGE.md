@@ -12,8 +12,8 @@ GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 
 | แอป | ตัวแปร | ค่า |
 |---|---|---|
-| **Mobile (UAT)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/uat` **หรือ** `GW/uat/api/v1` (ใช้ได้ทั้งคู่) |
-| **Mobile (PROD)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/prod` **หรือ** `GW/prod/api/v1` |
+| **Mobile (UAT)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/uat` **หรือ** `GW/uat/api/v1` (ลืม `api` หรือ `v1` ตัวใดตัวหนึ่งก็ผ่าน — regex `(?:/api)?(?:/v1)?`) |
+| **Mobile (PROD)** | `EXPO_PUBLIC_API_BASE_URL` | `GW/prod` **หรือ** `GW/prod/api/v1` (เช่นเดียวกัน) |
 | **pro-iot-board** | `REACT_APP_API_BASE_URL_ONE_LEKE` | `GW/api` |
 | | `REACT_APP_API_BASE_URL_IOT` | `GW/iot/v1` |
 | | `REACT_APP_API_BASE_URL_REVENUE` | `GW/revenue/v1` |
@@ -21,6 +21,7 @@ GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 | | `REACT_APP_API_BASE_URL_IMAGE` | เรียกตรง ไม่ผ่าน gateway |
 
 - SSL: Let's Encrypt หมดอายุ 19 ต.ค. 2026 — ต่ออายุอัตโนมัติผ่าน cron (`scripts/renew-ssl.sh` วันละ 2 ครั้ง)
+- cron บน VM (root): `renew-ssl.sh` 03:00/15:00 · `purge-log-bodies.sh` 02:30 ล้าง `request_body` เกิน 30 วัน (log `/var/log/purge-log-bodies.log`)
 - `http://` ยังใช้ได้ แต่ใช้ `https://` เสมอ ไม่งั้นเว็บที่เปิดด้วย https จะโดน mixed content บล็อก
 - `/api/WizardConfig` ชี้ **prod เสมอ** แยก environment ไม่ได้ เพราะแอปตัด path เหลือแค่ host
 
@@ -29,10 +30,14 @@ GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 | service | upstream | route |
 |---|---|---|
 | `onelake-middleware` | Azure App Service | 68 เส้น (`/api/*`) sync จาก Swagger |
-| `bevpro-uat` | `service.bevproasia.com:5001` | `/uat/*` catch-all + public 6 เส้น |
-| `bevpro-prod` | `service.bevproasia.com` | `/prod/*` catch-all + public 6 เส้น + `/api/WizardConfig` |
+| `bevpro-uat` | `service.bevproasia.com:5001` | `/uat/*` catch-all + public 8 เส้น (`/Authen/token`, `/Authen/dispatchtoken`, `/auth/azure-login`, `/WorkOrderRoadMap`, `/close-type-update`, `/master/close-types`, `/master/part-set`, `/ChecklistMaster`) |
+| `bevpro-prod` | `service.bevproasia.com` | `/prod/*` catch-all (+ rate-limiting 2000/นาที/consumer) + public 8 เส้น (ชุดเดียวกับ uat) + `/api/WizardConfig` + `/api/DisplayImage` |
+| `material-images` | `service.bevproasia.com:7008` | `/matireal/*` รูปวัสดุ (ใช้ใน `<img>` ของ service-management ai-help — ไม่มี jwt เพราะ `<img>` แนบ header ไม่ได้) |
+| `svc-management` (route `svc-all`) | `servicemanagement-...azurewebsites.net` | `/svc/*` **strip** catch-all — hub apps (safety, coffee, agentic, pro-iot ฯลฯ) เรียก SM ผ่านทางนี้ · ไม่มี jwt ของ Kong (มี endpoint auth ข้างใน, backend ตรวจ token เอง) · สร้างด้วย `scripts/add-web-backend-routes.sh` |
+| `pm-backend` (route `pm-all`) | `webappbevpro-...azurewebsites.net` (ProjectManagement) | `/pm/*` **strip** catch-all — bevpro-agentic-app ใช้ · เงื่อนไขเดียวกับ `/svc` |
 | `iot-service` | `iotservice.bevproasia.com/api/v1` | `/iot/v1` |
 | `revenue-service` | `servicemanagement-...azurewebsites.net/api/v1` | `/revenue/v1` |
+| `inbound-mobile` | `https://soap.bevproasia.com:88` — ชื่อนี้ถูก override ใน container kong ให้ = `10.0.0.4` (private IP ของเครื่อง IIS ใน VNet, ดู `extra_hosts` ใน `docker-compose.override.vm.yml`) → traffic วิ่งภายใน VNet แต่ SNI/hostname ยังถูก (binding IIS บังคับชื่อ ยิงด้วย IP = 400 Invalid Hostname) | `/inbound-mobile/*` **strip** → app เสิร์ฟที่ root เช่น `/inbound-mobile/health/live` → `:88/health/live` · ยังไม่มี jwt (รอตัดสินใจ) · สร้าง/แก้ด้วย `scripts/add-inbound-mobile.sh [--strip] [--jwt]` |
 | `acme-challenge` | nginx ภายใน | `/.well-known/acme-challenge` (ต่ออายุ SSL — **ห้ามลบ**) |
 
 **consumer:** `BevProApp` (key = `http://www.xxx.com`) · `onelake-app` (สำรอง ยังไม่มีใครใช้)
@@ -42,12 +47,15 @@ GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 ```bash
 python3 scripts/sync-routes-from-swagger.py --dry-run   # onelake — ดูก่อน
 python3 scripts/sync-routes-from-swagger.py             # onelake — ลงจริง
-python3 scripts/add-mobile-catchall.py                  # Mobile uat/prod (แบบ ANY)
+python3 scripts/add-mobile-catchall.py                  # Mobile uat/prod (แบบ ANY) — รันเต็ม = ลบ+สร้าง route ใหม่ (ดับสั้นๆ)
+python3 scripts/patch-mobile-regex.py --dry-run         # แก้ regex route mobile-env แบบ in-place ไม่ลบ route (plugin คงเดิม)
+python3 scripts/add-mobile-public-route.py /auth/azure-login POST --dry-run   # เพิ่ม route public (login/ไม่ต้องมี JWT) ทีละเส้น ทั้ง uat+prod — แล้วเพิ่มใน PUBLIC ของ add-mobile-catchall.py ด้วย
 python3 scripts/add-mobile-env-routes.py                # Mobile แบบ allowlist รายเส้น (ทางเลือก)
 sh      scripts/add-jwt-user-plugin.sh                  # ติดตั้ง pre-function ดึงชื่อผู้ใช้จาก JWT
 ```
 
 > route ที่สคริปต์สร้างจะติด tag (`swagger-sync` / `mobile-env`) — ตอนลบจะลบเฉพาะที่มี tag ของตัวเอง **route ที่เพิ่มมือใน Konga จึงไม่ถูกแตะ**
+> ยกเว้น: route ที่เพิ่มมือแล้วติด tag `mobile-env` ต้องตั้งชื่อขึ้นต้น `mb-api-` (เช่น `mb-api-wizardconfig`, `mb-api-displayimage`) ไม่งั้น `add-mobile-catchall.py` รันเต็มจะลบทิ้ง
 
 ## 📊 ข้อมูลที่เก็บใน log (ตาราง `kong_api_logs`)
 
@@ -59,8 +67,11 @@ sh      scripts/add-jwt-user-plugin.sh                  # ติดตั้ง 
 | `client_ip` · `user_agent` | Kong | เครือข่าย / ชนิดแอป |
 | `request_size` + `response_size` | Kong | โควตาอินเทอร์เน็ต 20 GB (PROPOSAL 4.2) |
 | `route_name` · `latency_ms` · `status_code` | Kong | วินิจฉัยปัญหา |
+| `app_name` | header `X-App-Name` ที่ api client ของแต่ละ frontend ใส่มา (เริ่ม 2026-08-26 — service-management เป็นแอปแรก) | แยกราย **แอป** — consumer แยกไม่ได้เพราะทุกแอปใช้ token ชุดเดียวกัน · NULL = แอปเก่า/ยังไม่ใส่ header · ⚠️ header ใหม่จากเว็บต้องเพิ่มใน whitelist ของ cors plugin (global) ไม่งั้น browser block ตอน preflight |
+| `request_body` | pre-function อ่าน body ที่ access phase (ตั้งแต่ 2026-08-21) | ดูว่าแอปส่งอะไรมา — เฉพาะ POST/PUT/PATCH ที่เป็น JSON/form ≤ 4 KB · upload รูป (> 8 KB) ไม่เก็บ · `/Authen/token` = `[REDACTED login]` · field `password`/`pwd` = `***` · **ล้างอัตโนมัติเมื่อเกิน 30 วัน** (`scripts/purge-log-bodies.sh` cron 02:30) |
 
 > ⚠️ **ห้ามเก็บ JWT ทั้งใบ** — BEVProAPI ใส่รหัสผ่านผู้ใช้ไว้ใน claim `email` (`AuthenController.cs`) ดึงเฉพาะ `sub` เท่านั้น
+> ⚠️ **ห้ามถอด redaction ของ `request_body`** ใน `scripts/add-jwt-user-plugin.sh` — body ของ `/Authen/token` คือ username+password ตัวจริง · body อื่นมี PII (ลูกค้า/GPS/พนักงาน) ใครเข้า Grafana/pgAdmin ได้เห็นหมด จึงเก็บแค่ 30 วัน
 
 ## 🚪 ตารางทางเข้าทั้งหมด
 
