@@ -6,12 +6,16 @@
 # ═══════════════════════════════════════════════════════════════
 services:
   kong:
-    # soap.bevproasia.com = เครื่อง IIS ตัวเดียวกับ service.bevproasia.com (public 20.33.118.76)
-    # override ให้ Kong resolve เป็น private IP ใน VNet -> upstream inbound-mobile (:88) วิ่งภายใน
+    # ทั้ง 3 ชื่อนี้คือเครื่อง IIS ตัวเดียวกัน (public 20.33.118.76 = private 10.0.0.4 ใน VNet)
+    # override ให้ Kong resolve เป็น private IP -> upstream ทุกเส้นที่ชี้เครื่องนี้วิ่งภายใน VNet
+    # (bevpro-prod/uat/service, material-images, iot-service, inbound-mobile)
     # ไม่ออก public โดยที่ SNI/hostname ยังถูกต้อง (binding IIS บังคับชื่อ ยิงด้วย IP โดน 400)
-    # ถ้าเครื่อง IIS เปลี่ยน private IP ต้องแก้ค่านี้ตาม
+    # วัดจริง 2026-09-01: private เร็วกว่า public ~17ms/req และตัด DNS lookup 31-206ms
+    # ถ้าเครื่อง IIS เปลี่ยน private IP ต้องแก้ทั้ง 3 บรรทัดตาม
     extra_hosts:
       - "soap.bevproasia.com:10.0.0.4"
+      - "service.bevproasia.com:10.0.0.4"
+      - "iotservice.bevproasia.com:10.0.0.4"
     environment:
       KONG_NGINX_WORKER_PROCESSES: "2"   # fix เท่าจำนวน core (กัน resize VM แล้ว auto เปิด worker เพิ่มจนกิน RAM)
       KONG_MEM_CACHE_SIZE: "128m"
@@ -61,6 +65,14 @@ services:
     environment:
       GF_SERVER_ROOT_URL: "https://bevprogateway.southeastasia.cloudapp.azure.com/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      # datasource SqlServerBevPro — อ่าน DMV ของ SQL Server ที่ backend (10.0.0.4 ใน VNet)
+      # ใช้ private IP ไม่ใช่ public เพื่อไม่ให้ traffic ออกอินเทอร์เน็ต
+      # login read-only เท่านั้น สร้างด้วย scripts/create-grafana-sql-login.sql
+      # รหัสอยู่ใน .env key ชื่อ MSSQL_GRAFANA_PASSWORD (ถ้าว่าง datasource จะต่อไม่ติด)
+      MSSQL_GRAFANA_HOST: ${MSSQL_GRAFANA_HOST:-10.0.0.4:1433}
+      MSSQL_GRAFANA_DB: ${MSSQL_GRAFANA_DB:-BevproFsProd}
+      MSSQL_GRAFANA_USER: ${MSSQL_GRAFANA_USER:-grafana_reader}
+      MSSQL_GRAFANA_PASSWORD: ${MSSQL_GRAFANA_PASSWORD:-}
     deploy:
       resources:
         limits:

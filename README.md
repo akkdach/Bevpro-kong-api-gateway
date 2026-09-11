@@ -201,8 +201,25 @@ curl.exe -s -X PATCH "http://localhost:8001/plugins/$($p.id)" --data "enabled=fa
   - **Kong — Deep Analysis** — ภาพรวม/การใช้งาน/ความเร็ว/error/โควตาเน็ต/rate limit (จาก log)
   - **Kong — ปริมาณข้อมูลราย endpoint / รายพนักงาน** (`kong-upload-drill`) — เลือก endpoint แล้วดู upload/download รายพนักงาน
   - **Kong — ใครยิงอะไร** (`kong-who-calls-what`) — dropdown IP · ชนิดแอป · user · endpoint กรองทุก panel + log ดิบ (ใช้ตอบ "เครื่องไหนยิงเส้นไหน")
+  - **Lock Contention — Manpower** (`kong-lock-contention`) — จับอาการ upstream ค้าง 30 วินาทีจาก lock ในฐานข้อมูล: นับคำขอที่ตอบ 200 แต่ค้าง (แอปกลืน exception จึงไม่ขึ้น error), เทียบกลุ่ม endpoint ที่แตะตาราง `Manpower_Operations` กับกลุ่มควบคุม, วงจร retry ของแอปมือถือ, และกราฟรายวันไว้วัดผลหลังสร้าง index
+  - **SQL Server — Lock สด** (`sqlserver-lock-live`) — สายโซ่การบล็อกตอนนี้, transaction ที่เปิดค้าง, สุขภาพ index ของ `Manpower_Operations`, ยอด `LCK_*` wait (datasource `mssqlbevpro`)
+  - **SQL Server — Lock ย้อนหลัง** (`sqlserver-lock-history`) — กราฟย้อนหลังจากตาราง `sql_*_samples` ที่ cron เก็บทุก 1 นาที ใช้ตอบว่า "เมื่อวานตอนนั้นใครถือ lock"
 - dashboard ที่อ่านจาก log ใช้ datasource Postgres uid `konglogs` · `request_body` ไม่ได้เก็บ (log-receiver ตั้ง null)
 - ข้อจำกัด OSS: label `consumer` มีเฉพาะ request count + bandwidth (latency ได้ละเอียดสุดราย service/route)
+
+### datasource ที่ 3 — SQL Server ของ backend (`mssqlbevpro`)
+
+ใช้ดู lock/blocking ที่ต้นเหตุจริง ซึ่ง log ของ Kong มองไม่เห็น กำหนดไว้ที่ `monitoring/grafana/provisioning/datasources/mssql.yml`
+ชี้ไป **private IP `10.0.0.4:1433` ใน VNet** ไม่ใช่ public IP
+
+| key ใน `.env` (root) | ค่าปริยาย | หมายเหตุ |
+|---|---|---|
+| `MSSQL_GRAFANA_HOST` | `10.0.0.4:1433` | เครื่อง IIS/SQL ตัวเดียวกับ upstream ของ `bevpro-prod` |
+| `MSSQL_GRAFANA_DB` | `BevproFsProd` | |
+| `MSSQL_GRAFANA_USER` | `grafana_reader` | |
+| `MSSQL_GRAFANA_PASSWORD` | ไม่มี | ถ้าว่าง datasource จะต่อไม่ติด และตัวเก็บตัวอย่างจะข้ามตัวเองเงียบ ๆ |
+
+⚠️ **ห้ามใช้ `sa` กับ Grafana** — สร้าง login read-only ด้วย `scripts/create-grafana-sql-login.sql` (ให้แค่ `VIEW SERVER STATE` + `VIEW DATABASE STATE` ไม่มีสิทธิ์ SELECT ตารางข้อมูลใด ๆ) รันผ่าน SSMS ที่ instance `WebApplication\MSSQLQAS` ครั้งเดียว
 
 ## ⚙️ การปรับแต่ง
 

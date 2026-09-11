@@ -1,0 +1,830 @@
+{
+  "uid": "kong-lock-contention",
+  "title": "Lock Contention — Manpower",
+  "tags": [
+    "kong",
+    "lock",
+    "manpower",
+    "incident"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "editable": true,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "slow_ms",
+        "label": "เกณฑ์ว่าค้าง (ms)",
+        "type": "custom",
+        "query": "25000,20000,10000,5000",
+        "current": {
+          "text": "25000",
+          "value": "25000"
+        },
+        "options": [
+          {
+            "text": "25000",
+            "value": "25000",
+            "selected": true
+          },
+          {
+            "text": "20000",
+            "value": "20000",
+            "selected": false
+          },
+          {
+            "text": "10000",
+            "value": "10000",
+            "selected": false
+          },
+          {
+            "text": "5000",
+            "value": "5000",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "ภาพรวมช่วงเวลาที่เลือก",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "คำขอที่ค้างแต่ตอบ 200",
+      "description": "แอปดักจับ exception แล้วตอบ 200 ตามปกติ ตัวเลขนี้คือความล้มเหลวที่ dashboard ทั่วไปมองไม่เห็น",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"silent_failures\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\n  AND status_code = 200\n  AND latency_ms >= $slow_ms"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "นาทีที่เกิด burst",
+      "description": "นับนาทีที่มีคำขอค้างตั้งแต่ 5 ครั้งขึ้นไป ใช้ดูว่าปัญหากินเวลานานแค่ไหน",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"burst_minutes\" FROM (\n  SELECT date_trunc('minute', request_time)\n  FROM kong_api_logs\n  WHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%' AND latency_ms >= $slow_ms\n  GROUP BY 1 HAVING count(*) >= 5\n) t"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ช่างที่ได้รับผลกระทบ",
+      "description": "จำนวนผู้ใช้ที่มีคำขอค้างอย่างน้อยหนึ่งครั้ง",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT jwt_user) AS \"users_hit\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\n  AND latency_ms >= $slow_ms\n  AND jwt_user IS NOT NULL AND jwt_user <> ''"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "รอนานที่สุด",
+      "description": "ค่า latency สูงสุดในช่วงเวลาที่เลือก ถ้าอยู่แถว 30 วินาที แปลว่าโดน CommandTimeout ตัด",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5000
+              },
+              {
+                "color": "red",
+                "value": 25000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT max(latency_ms) AS \"max_ms\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ตรวจจับลายเซ็นของ lock",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "ลายเซ็นของ lock ต่อนาที",
+      "description": "แท่ง 'ติด lock' คือคำขอที่ latency อยู่ระหว่าง 29 ถึง 33 วินาที ซึ่งเป็นรูปแบบเฉพาะของการโดน CommandTimeout ตัด ไม่ใช่ระบบช้าทั่วไป",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ติด lock 29-33 วินาที"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ช้า 5-29 วินาที"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ปกติ"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(request_time, '1m'),\n  count(*) FILTER (WHERE latency_ms BETWEEN 29000 AND 33000) AS \"ติด lock 29-33 วินาที\",\n  count(*) FILTER (WHERE latency_ms >= 5000 AND latency_ms < 29000) AS \"ช้า 5-29 วินาที\",\n  count(*) FILTER (WHERE latency_ms < 5000) AS \"ปกติ\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND service_name = 'bevpro-prod'\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "กลุ่ม Manpower เทียบกลุ่มควบคุม",
+      "description": "ถ้าเส้นสีแดงขึ้นตัวเดียวโดยที่เส้นควบคุมนิ่ง แปลว่าปัญหาอยู่ที่ตาราง Manpower_Operations ไม่ใช่ทั้งระบบหรือเครือข่าย",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "กลุ่ม Manpower"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "กลุ่มควบคุม"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(request_time, '1m'),\n  count(*) FILTER (WHERE path ~ '(lockEmployee|Mobile/profile|get_subordinate_work_order_activities)' AND latency_ms >= $slow_ms) AS \"กลุ่ม Manpower\",\n  count(*) FILTER (WHERE path ~ '(Mobile/workorder|customer_info|workorder_history|clockin)' AND latency_ms >= $slow_ms) AS \"กลุ่มควบคุม\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "วงจร retry ของแอปมือถือ",
+      "description": "เส้นคำขอต่อนาทีพุ่งขึ้นโดยที่จำนวนผู้ใช้จริงแทบไม่ขยับ แปลว่าเป็นการยิงซ้ำ ไม่ใช่คนใช้งานเพิ่ม",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "คำขอต่อนาที"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ผู้ใช้จริงต่อนาที"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(request_time, '1m'),\n  count(*) AS \"คำขอต่อนาที\",\n  count(DISTINCT jwt_user) AS \"ผู้ใช้จริงต่อนาที\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\n  AND path LIKE '%lockEmployee/GetHealthCheck%'\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ผลกระทบ",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "endpoint ที่ติด lock",
+      "description": "คอลัมน์เปอร์เซ็นต์บอกว่าเส้นนั้นโดนหนักแค่ไหน ไม่ใช่แค่โดนกี่ครั้ง",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 13,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% ที่ติด"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "สูงสุด ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ติด lock",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  split_part(path, '?', 1) AS \"endpoint\",\n  count(*) FILTER (WHERE latency_ms >= $slow_ms) AS \"ติด lock\",\n  count(*) AS \"เรียกทั้งหมด\",\n  round(100.0 * count(*) FILTER (WHERE latency_ms >= $slow_ms) / NULLIF(count(*), 0), 1) AS \"% ที่ติด\",\n  percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)::int AS \"p95 ms\",\n  max(latency_ms) AS \"สูงสุด ms\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\nGROUP BY 1\nHAVING count(*) FILTER (WHERE latency_ms >= $slow_ms) > 0\nORDER BY 2 DESC\nLIMIT 30"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "ช่างที่โดน",
+      "description": "เอาไปแจ้งหน้างานได้ว่าใครใช้แอปไม่ได้ช่วงไหน",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 11,
+        "x": 13,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "รอนานสุด ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ครั้งที่ค้าง",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  jwt_user AS \"รหัสพนักงาน\",\n  count(*) FILTER (WHERE latency_ms >= $slow_ms) AS \"ครั้งที่ค้าง\",\n  count(*) AS \"เรียกทั้งหมด\",\n  max(latency_ms) AS \"รอนานสุด ms\",\n  max(request_time) AS \"ล่าสุด\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND path NOT LIKE '/grafana%'\n  AND jwt_user IS NOT NULL AND jwt_user <> ''\nGROUP BY 1\nHAVING count(*) FILTER (WHERE latency_ms >= $slow_ms) > 0\nORDER BY 2 DESC\nLIMIT 30"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "วัดผลหลังสร้าง index",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "จำนวนคำขอที่ค้าง รายวัน",
+      "description": "index บน Manpower_Operations(EmployeeCode) สร้างเมื่อ 2026-09-10 ช่วงบ่าย แท่งหลังจากนั้นควรเป็นศูนย์",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "barWidthFactor": 0.7
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', request_time) AS time,\n  count(*) FILTER (WHERE latency_ms >= $slow_ms) AS \"คำขอที่ค้าง\"\nFROM kong_api_logs\nWHERE $__timeFilter(request_time)\n  AND service_name = 'bevpro-prod'\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "สร้าง index",
+        "enable": true,
+        "iconColor": "green",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "target": {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT timestamptz '2026-09-10 14:55:00+07' AS time, 'สร้าง IX_Manpower_Operations_EmployeeCode' AS text, 'index' AS tags"
+        }
+      }
+    ]
+  }
+}

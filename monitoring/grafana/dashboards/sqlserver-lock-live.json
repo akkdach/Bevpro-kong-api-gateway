@@ -1,0 +1,337 @@
+{
+  "uid": "sqlserver-lock-live",
+  "title": "SQL Server — Lock สด",
+  "tags": ["sqlserver", "lock", "manpower", "live"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "editable": true,
+  "time": { "from": "now-5m", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "สถานะตอนนี้",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "session ที่ถูกบล็อกอยู่",
+      "description": "ถ้าค่านี้ไม่เป็นศูนย์ แปลว่ามีคนถือ lock ค้างอยู่ตอนนี้",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS blocked_now\nFROM sys.dm_exec_requests\nWHERE blocking_session_id <> 0;"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "รอ lock นานสุดตอนนี้",
+      "description": "ถ้าไต่ไปใกล้ 30 วินาที แปลว่ากำลังจะโดน CommandTimeout ตัด",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5000 },
+              { "color": "red", "value": 20000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ISNULL(MAX(wait_time), 0) AS max_wait_ms\nFROM sys.dm_exec_requests\nWHERE blocking_session_id <> 0;"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "transaction เปิดค้างนานสุด",
+      "description": "transaction ที่เปิดค้างคือสาเหตุที่ X lock ไม่ถูกปล่อย",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ISNULL(MAX(DATEDIFF(second, at.transaction_begin_time, GETDATE())), 0) AS oldest_tran_sec\nFROM sys.dm_tran_active_transactions at\nJOIN sys.dm_tran_session_transactions st ON st.transaction_id = at.transaction_id\nJOIN sys.dm_exec_sessions s ON s.session_id = st.session_id\nWHERE s.is_user_process = 1;"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "จำนวน session ทั้งหมด",
+      "description": "ใช้เทียบว่าโหลดสูงผิดปกติหรือเปล่า",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS user_sessions\nFROM sys.dm_exec_sessions\nWHERE is_user_process = 1;"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ใครบล็อกใคร",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "สายโซ่การบล็อกตอนนี้",
+      "description": "แถวที่ blocking_session_id ไม่เป็นศูนย์คือคนที่กำลังรอ ให้ไล่ไปดูว่า session ที่ไปบล็อกกำลังทำอะไรอยู่",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 7 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "รอมาแล้ว ms" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 5000 },
+                    { "color": "red", "value": 20000 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "คำสั่ง SQL" },
+            "properties": [{ "id": "custom.width", "value": 460 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "รอมาแล้ว ms", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    r.session_id                AS [session],\n    r.blocking_session_id       AS [ถูกบล็อกโดย],\n    r.wait_type                 AS [ชนิดการรอ],\n    r.wait_time                 AS [รอมาแล้ว ms],\n    DB_NAME(r.database_id)      AS [database],\n    s.login_name                AS [login],\n    ISNULL(s.host_name, '')     AS [เครื่อง],\n    ISNULL(s.program_name, '')  AS [โปรแกรม],\n    LEFT(REPLACE(REPLACE(t.text, CHAR(13), ' '), CHAR(10), ' '), 300) AS [คำสั่ง SQL]\nFROM sys.dm_exec_requests r\nJOIN sys.dm_exec_sessions s ON s.session_id = r.session_id\nOUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t\nWHERE r.blocking_session_id <> 0\n   OR r.session_id IN (SELECT blocking_session_id FROM sys.dm_exec_requests WHERE blocking_session_id <> 0)\nORDER BY r.wait_time DESC;"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "transaction ที่เปิดค้างเกิน 10 วินาที",
+      "description": "ตัวที่ต้องตามหาเวลาเกิด lock convoy ถ้าโปรแกรมเป็น SSMS แปลว่ามีคนเปิดกริดแก้ข้อมูลค้างไว้",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "เปิดมาแล้ว วินาที" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 30 },
+                    { "color": "red", "value": 120 }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "เปิดมาแล้ว วินาที", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    s.session_id                AS [session],\n    DATEDIFF(second, at.transaction_begin_time, GETDATE()) AS [เปิดมาแล้ว วินาที],\n    at.transaction_begin_time   AS [เริ่มเมื่อ],\n    s.login_name                AS [login],\n    ISNULL(s.host_name, '')     AS [เครื่อง],\n    ISNULL(s.program_name, '')  AS [โปรแกรม],\n    s.status                    AS [สถานะ session],\n    LEFT(REPLACE(REPLACE(ISNULL(t.text, ''), CHAR(13), ' '), CHAR(10), ' '), 300) AS [คำสั่งล่าสุด]\nFROM sys.dm_tran_active_transactions at\nJOIN sys.dm_tran_session_transactions st ON st.transaction_id = at.transaction_id\nJOIN sys.dm_exec_sessions s ON s.session_id = st.session_id\nOUTER APPLY sys.dm_exec_sql_text(\n    (SELECT TOP 1 c.most_recent_sql_handle\n     FROM sys.dm_exec_connections c\n     WHERE c.session_id = s.session_id)) t\nWHERE s.is_user_process = 1\n  AND DATEDIFF(second, at.transaction_begin_time, GETDATE()) >= 10\nORDER BY 2 DESC;"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "สุขภาพ index ของ Manpower_Operations",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "index ถูกใช้แบบไหน",
+      "description": "ค่า user_scans ของ clustered index ต้องหยุดนิ่ง และ user_seeks ของ IX_Manpower_Operations_EmployeeCode ต้องเพิ่มขึ้นเรื่อย ๆ ถ้ากลับด้านเมื่อไรแปลว่ามี query ใหม่ที่ไม่มี index รองรับ",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "scans" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 1000 },
+                    { "color": "red", "value": 10000 }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    i.name                  AS [index],\n    i.type_desc             AS [ชนิด],\n    ISNULL(s.user_seeks, 0)   AS [seeks],\n    ISNULL(s.user_scans, 0)   AS [scans],\n    ISNULL(s.user_lookups, 0) AS [lookups],\n    ISNULL(s.user_updates, 0) AS [updates],\n    s.last_user_seek        AS [seek ล่าสุด],\n    s.last_user_scan        AS [scan ล่าสุด]\nFROM sys.indexes i\nLEFT JOIN sys.dm_db_index_usage_stats s\n       ON s.object_id = i.object_id\n      AND s.index_id  = i.index_id\n      AND s.database_id = DB_ID()\nWHERE i.object_id = OBJECT_ID('dbo.Manpower_Operations')\n  AND i.type_desc <> 'HEAP'\nORDER BY i.index_id;"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "ยอดสะสมของ lock wait ทั้ง instance",
+      "description": "LCK_M_S คือคนอ่านรอคนเขียน ถ้า max_wait_time_ms อยู่ที่ 30,000 แปลว่าเคยมีคำขอโดน CommandTimeout ตัด",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 26 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "รอนานสุด ms" },
+            "properties": [{ "id": "unit", "value": "ms" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "เวลารอรวม ms" },
+            "properties": [{ "id": "unit", "value": "ms" }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "เวลารอรวม ms", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    wait_type            AS [ชนิดการรอ],\n    waiting_tasks_count  AS [จำนวนครั้ง],\n    wait_time_ms         AS [เวลารอรวม ms],\n    max_wait_time_ms     AS [รอนานสุด ms]\nFROM sys.dm_os_wait_stats\nWHERE wait_type LIKE 'LCK[_]%'\n  AND waiting_tasks_count > 0\nORDER BY wait_time_ms DESC;"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "query ที่เสียเวลาไปกับการรอมากที่สุด",
+      "description": "คอลัมน์เวลารอคือ elapsed ลบ cpu ถ้าค่าสูงแต่ cpu ต่ำ แปลว่าไม่ได้ช้าเพราะทำงานหนัก แต่ช้าเพราะรอ lock",
+      "datasource": { "type": "mssql", "uid": "mssqlbevpro" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "คำสั่ง SQL" },
+            "properties": [{ "id": "custom.width", "value": 520 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "เวลารอรวม วินาที", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT TOP 20\n    CAST((qs.total_elapsed_time - qs.total_worker_time) / 1000000.0 AS DECIMAL(12,1)) AS [เวลารอรวม วินาที],\n    CAST(qs.max_elapsed_time / 1000000.0 AS DECIMAL(9,1)) AS [ครั้งที่นานสุด วินาที],\n    CAST(qs.total_worker_time / 1000000.0 AS DECIMAL(12,1)) AS [CPU รวม วินาที],\n    qs.execution_count AS [จำนวนครั้ง],\n    qs.last_execution_time AS [รันล่าสุด],\n    LEFT(REPLACE(REPLACE(st.text, CHAR(13), ' '), CHAR(10), ' '), 300) AS [คำสั่ง SQL]\nFROM sys.dm_exec_query_stats qs\nCROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st\nWHERE qs.total_elapsed_time - qs.total_worker_time > 10000000\nORDER BY 1 DESC;"
+        }
+      ]
+    }
+  ]
+}

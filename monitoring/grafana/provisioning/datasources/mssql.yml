@@ -1,0 +1,38 @@
+apiVersion: 1
+
+# ─────────────────────────────────────────────────────────────
+# SqlServerBevPro — DMV ของ SQL Server ที่ backend (VM WebApplication 10.0.0.4)
+#
+# มีไว้ดู lock / blocking / index usage ของ BevproFsProd จาก Grafana
+# dashboard ที่ใช้: sqlserver-lock-live.json, sqlserver-lock-history.json
+#
+# ⚠️ ต้องเป็น login read-only ที่มีสิทธิ์แค่ VIEW SERVER STATE + VIEW DATABASE STATE
+#    ห้ามใช้ sa เด็ดขาด (Grafana เก็บรหัสไว้ และมีแอดมินหลายคนเข้าถึง)
+#    สร้าง login ด้วย scripts/create-grafana-sql-login.sql แล้วใส่รหัสใน .env
+#
+# key ที่ต้องมีใน .env ของ root:
+#   MSSQL_GRAFANA_HOST      (ปริยาย 10.0.0.4:1433 — ใช้ private IP ไม่ใช่ public)
+#   MSSQL_GRAFANA_DB        (ปริยาย BevproFsProd)
+#   MSSQL_GRAFANA_USER      (ปริยาย grafana_reader)
+#   MSSQL_GRAFANA_PASSWORD  (ไม่มีค่าปริยาย — ถ้าว่าง datasource จะต่อไม่ติด)
+# ─────────────────────────────────────────────────────────────
+
+datasources:
+  - name: SqlServerBevPro
+    uid: mssqlbevpro         # dashboard อ้างถึงค่านี้
+    type: mssql
+    access: proxy
+    url: ${MSSQL_GRAFANA_HOST}
+    database: ${MSSQL_GRAFANA_DB}
+    user: ${MSSQL_GRAFANA_USER}
+    secureJsonData:
+      password: ${MSSQL_GRAFANA_PASSWORD}
+    jsonData:
+      # ใบรับรองของ SQL Server เป็น self-signed จึงต้องข้ามการตรวจ
+      encrypt: "true"
+      tlsSkipVerify: true
+      # จำกัด connection ไม่ให้ Grafana ไปกินทรัพยากรของ production DB
+      maxOpenConns: 4
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    editable: false

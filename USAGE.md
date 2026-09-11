@@ -21,7 +21,7 @@ GW = https://bevprogateway.southeastasia.cloudapp.azure.com
 | | `REACT_APP_API_BASE_URL_IMAGE` | เรียกตรง ไม่ผ่าน gateway |
 
 - SSL: Let's Encrypt หมดอายุ 19 ต.ค. 2026 — ต่ออายุอัตโนมัติผ่าน cron (`scripts/renew-ssl.sh` วันละ 2 ครั้ง)
-- cron บน VM (root): `renew-ssl.sh` 03:00/15:00 · `purge-log-bodies.sh` 02:30 ล้าง `request_body` เกิน 30 วัน (log `/var/log/purge-log-bodies.log`)
+- cron บน VM (root): `renew-ssl.sh` 03:00/15:00 · `purge-log-bodies.sh` 02:30 ล้าง `request_body` เกิน 30 วัน (log `/var/log/purge-log-bodies.log`) · `refresh-report-rollups.sh` ทุก 6 ชม. · `sample-sqlserver-locks.sh` ทุก 1 นาที เก็บสถานะ lock ของ SQL Server (log `/var/log/kong-lock-sampler.log`)
 - `http://` ยังใช้ได้ แต่ใช้ `https://` เสมอ ไม่งั้นเว็บที่เปิดด้วย https จะโดน mixed content บล็อก
 - `/api/WizardConfig` ชี้ **prod เสมอ** แยก environment ไม่ได้ เพราะแอปตัด path เหลือแค่ host
 
@@ -69,6 +69,20 @@ sh      scripts/add-jwt-user-plugin.sh                  # ติดตั้ง 
 | `route_name` · `latency_ms` · `status_code` | Kong | วินิจฉัยปัญหา |
 | `app_name` | header `X-App-Name` ที่ api client ของแต่ละ frontend ใส่มา (เริ่ม 2026-08-26 — service-management เป็นแอปแรก) | แยกราย **แอป** — consumer แยกไม่ได้เพราะทุกแอปใช้ token ชุดเดียวกัน · NULL = แอปเก่า/ยังไม่ใส่ header · ⚠️ header ใหม่จากเว็บต้องเพิ่มใน whitelist ของ cors plugin (global) ไม่งั้น browser block ตอน preflight |
 | `request_body` | pre-function อ่าน body ที่ access phase (ตั้งแต่ 2026-08-21) | ดูว่าแอปส่งอะไรมา — เฉพาะ POST/PUT/PATCH ที่เป็น JSON/form ≤ 4 KB · upload รูป (> 8 KB) ไม่เก็บ · `/Authen/token` = `[REDACTED login]` · field `password`/`pwd` = `***` · **ล้างอัตโนมัติเมื่อเกิน 30 วัน** (`scripts/purge-log-bodies.sh` cron 02:30) |
+
+### ตารางเก็บสถานะ lock ของ SQL Server (เพิ่ม 2026-09-11)
+
+อยู่ใน database `kong` เดียวกับ `kong_api_logs` เติมโดย cron `scripts/sample-sqlserver-locks.sh` ทุก 1 นาที (เก็บ 2 ตัวอย่างต่อรอบ ห่างกัน 30 วินาที) เก็บย้อนหลัง 30 วันแล้วล้างอัตโนมัติ
+
+| ตาราง | เก็บอะไร | ใช้ตอบคำถามว่า |
+|---|---|---|
+| `sql_blocking_samples` | session ที่กำลังรอ lock + เลข session ที่ไปบล็อก + `program_name` ของตัวบล็อก | ใครถือ lock ตอนนั้น เป็นโค้ดของแอปหรือคนเปิด SSMS ค้างไว้ |
+| `sql_lock_wait_samples` | ยอดสะสม `LCK_*` จาก `sys.dm_os_wait_stats` | ช่วงไหนมีการรอ lock เพิ่มขึ้นผิดปกติ (dashboard ทำ delta ให้) |
+| `sql_index_usage_samples` | `user_seeks` / `user_scans` ของทุก index บน `Manpower_Operations` | index ที่สร้างไว้ยังถูกใช้อยู่ไหม หรือมี query ใหม่ที่ทำให้กลับไป scan ทั้งตาราง |
+
+สร้างตารางด้วย `init-db/002-create-lock-sample-tables.sql` — ไฟล์ใน `init-db/` รันเฉพาะตอนสร้าง volume ครั้งแรก ถ้า DB มีอยู่แล้วให้ใช้ `sudo bash scripts/install-lock-sampler.sh` ซึ่งสร้างตาราง ดึง image ของ sqlcmd ทดสอบการต่อ และใส่ cron ให้ครบในคำสั่งเดียว
+
+> ตัวเก็บตัวอย่างอ่าน DMV อย่างเดียว ไม่มีคำสั่งเขียนใด ๆ ต่อ SQL Server และจะข้ามตัวเองเงียบ ๆ ถ้ายังไม่ได้ตั้ง `MSSQL_GRAFANA_PASSWORD` ใน `.env`
 
 > ⚠️ **ห้ามเก็บ JWT ทั้งใบ** — BEVProAPI ใส่รหัสผ่านผู้ใช้ไว้ใน claim `email` (`AuthenController.cs`) ดึงเฉพาะ `sub` เท่านั้น
 > ⚠️ **ห้ามถอด redaction ของ `request_body`** ใน `scripts/add-jwt-user-plugin.sh` — body ของ `/Authen/token` คือ username+password ตัวจริง · body อื่นมี PII (ลูกค้า/GPS/พนักงาน) ใครเข้า Grafana/pgAdmin ได้เห็นหมด จึงเก็บแค่ 30 วัน

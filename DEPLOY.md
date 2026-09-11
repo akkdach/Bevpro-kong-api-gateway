@@ -94,3 +94,28 @@ Test-NetConnection 20.6.32.81 -Port 5432
 | `konga` | หน้า admin ของ Kong | แทบไม่เคย |
 
 > หมายเหตุ: การแก้ route/plugin ของ Kong **ไม่ใช่การ deploy** — ทำผ่าน Admin API (พอร์ต 8001) หรือ Konga ได้ทันที ไม่ต้อง restart อะไร
+
+---
+
+## 7. ติดตั้ง datasource SQL Server + ตัวเก็บสถานะ lock (ทำครั้งเดียว)
+
+ใช้กับ dashboard `sqlserver-lock-live` และ `sqlserver-lock-history` ซึ่งอ่าน DMV ของ SQL Server ที่ VM `WebApplication` (10.0.0.4) โดยตรง ไม่ผ่าน Kong
+
+**ลำดับสำคัญ ทำผิดลำดับแล้วจะต่อไม่ติด**
+
+1. **สร้าง login read-only บน SQL Server** เปิด SSMS ต่อไปที่ instance `WebApplication\MSSQLQAS` ด้วยบัญชี sysadmin แล้วรัน `scripts/create-grafana-sql-login.sql` (แก้รหัสในไฟล์ก่อนรัน) — ⚠️ ห้ามใช้ `sa`
+2. **ใส่รหัสใน `.env` ของ Kong VM** เพิ่มบรรทัด `MSSQL_GRAFANA_PASSWORD=<รหัสที่ตั้งไว้>` ใน `/home/adminwebapp/kong/.env` (ไฟล์นี้ gitignored อยู่แล้ว)
+3. **ส่งไฟล์ขึ้น VM** ตามขั้นตอนข้อ 1 ของคู่มือนี้ — `monitoring/grafana/provisioning/datasources/mssql.yml`, `monitoring/grafana/dashboards/*.json`, `scripts/sample-sqlserver-locks.sh`, `scripts/install-lock-sampler.sh`, `init-db/002-create-lock-sample-tables.sql` และ `docker-compose.override.vm.yml` (ปลายทางชื่อ `docker-compose.override.yml`)
+4. **สร้าง grafana ใหม่ให้รับ env** `sudo -n docker compose up -d grafana` — env ใหม่ 4 ตัวอยู่ใน override ไม่ต้องแตะ `docker-compose.yml` บน VM
+5. **ติดตั้งตัวเก็บตัวอย่าง** `sudo bash /home/adminwebapp/kong/scripts/install-lock-sampler.sh` — สร้างตาราง ดึง image sqlcmd ทดสอบการเชื่อมต่อ และใส่ cron ทุก 1 นาที รันซ้ำได้ไม่มีผลข้างเคียง
+
+**ตรวจว่าใช้ได้จริง**
+```bash
+# ตัวเก็บตัวอย่างเขียนข้อมูลเข้าแล้วหรือยัง (รอ 2 นาทีหลังติดตั้ง)
+sudo -n docker exec kong-database psql -U kong -d kong -c "SELECT max(sampled_at) FROM sql_index_usage_samples;"
+
+# ถ้าว่าง ให้ดูสาเหตุที่ log
+tail -20 /var/log/kong-lock-sampler.log
+```
+
+> ถ้ายังไม่ได้ทำขั้นที่ 1 กับ 2 ทุกอย่างยังติดตั้งได้ตามปกติ dashboard `kong-lock-contention` (อ่านจาก log ของ Kong) ใช้งานได้เลย ส่วนอีกสองหน้าจะว่างจนกว่าจะมีรหัส

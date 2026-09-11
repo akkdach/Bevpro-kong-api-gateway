@@ -1,0 +1,229 @@
+{
+  "uid": "sqlserver-lock-history",
+  "title": "SQL Server — Lock ย้อนหลัง",
+  "tags": ["sqlserver", "lock", "manpower", "history"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "editable": true,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "type": "text",
+      "title": "ข้อมูลมาจากไหน",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "หน้านี้อ่านจากตาราง `sql_blocking_samples`, `sql_lock_wait_samples`, `sql_index_usage_samples` ใน Postgres ของ Kong ซึ่งถูกเติมโดย cron `scripts/sample-sqlserver-locks.sh` ทุก 1 นาที (เก็บ 2 ตัวอย่างต่อรอบ ห่างกัน 30 วินาที) เก็บย้อนหลัง 30 วัน\n\nถ้ากราฟว่างเปล่า แปลว่ายังไม่ได้ติดตั้งตัวเก็บตัวอย่าง ให้รัน `sudo bash scripts/install-lock-sampler.sh` บน Kong VM"
+      }
+    },
+    {
+      "type": "row",
+      "title": "การบล็อกย้อนหลัง",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "จำนวน session ที่ถูกบล็อก",
+      "description": "ยอดสูงสุดในแต่ละนาที ถ้าไม่เป็นศูนย์ติดต่อกันหลายนาที คือช่วงที่เกิด lock convoy",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 1 },
+          "color": { "mode": "fixed", "fixedColor": "red" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(sampled_at, '1m'),\n  max(cnt) AS \"session ที่ถูกบล็อก\"\nFROM (\n  SELECT sampled_at, count(*) FILTER (WHERE blocking_session_id <> 0) AS cnt\n  FROM sql_blocking_samples\n  WHERE $__timeFilter(sampled_at)\n  GROUP BY sampled_at\n) t\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "เวลารอนานที่สุดในแต่ละนาที",
+      "description": "เส้นแตะ 30,000 ms เมื่อไร แปลว่ามีคำขอโดน CommandTimeout ตัดในนาทีนั้น",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "spanNulls": false },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5000 },
+              { "color": "red", "value": 25000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(sampled_at, '1m'),\n  max(wait_ms) AS \"รอนานสุด\"\nFROM sql_blocking_samples\nWHERE $__timeFilter(sampled_at)\n  AND blocking_session_id <> 0\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "lock wait ที่เพิ่มขึ้นในแต่ละช่วง",
+      "description": "ค่าใน DMV เป็นยอดสะสม กราฟนี้ทำ delta ให้แล้ว LCK_M_S คือคนอ่านรอคนเขียน",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, value, metric FROM (\n  SELECT\n    sampled_at AS time,\n    wait_time_ms - lag(wait_time_ms) OVER (PARTITION BY wait_type ORDER BY sampled_at) AS value,\n    wait_type AS metric\n  FROM sql_lock_wait_samples\n  WHERE $__timeFilter(sampled_at)\n) t\nWHERE value > 0\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "index ของ Manpower_Operations",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "scan เทียบ seek ที่เพิ่มขึ้นจริงในแต่ละช่วง",
+      "description": "หลังสร้าง IX_Manpower_Operations_EmployeeCode เส้น scan ของ clustered index ต้องแบนราบ ส่วนเส้น seek ของ index ใหม่ต้องขึ้น ถ้ากลับด้านเมื่อไรแปลว่ามี query ที่ไม่มี index รองรับโผล่มาใหม่",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 22 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*scans.*" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": ".*seeks.*" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, value, metric FROM (\n  SELECT sampled_at AS time,\n         user_scans - lag(user_scans) OVER (PARTITION BY index_name ORDER BY sampled_at) AS value,\n         index_name || ' · scans' AS metric\n  FROM sql_index_usage_samples\n  WHERE $__timeFilter(sampled_at)\n  UNION ALL\n  SELECT sampled_at AS time,\n         user_seeks - lag(user_seeks) OVER (PARTITION BY index_name ORDER BY sampled_at) AS value,\n         index_name || ' · seeks' AS metric\n  FROM sql_index_usage_samples\n  WHERE $__timeFilter(sampled_at)\n) t\nWHERE value IS NOT NULL AND value >= 0\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "รายละเอียดเหตุการณ์",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "ใครเป็นตัวบล็อกบ่อยที่สุด",
+      "description": "ดูคอลัมน์โปรแกรม ถ้าเป็น SQL Server Management Studio แปลว่ามีคนเปิดกริดแก้ข้อมูลค้างไว้ ถ้าเป็น .Net SqlClient แปลว่าเป็นโค้ดของแอป",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 11, "x": 0, "y": 32 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": []
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "ปรากฏเป็นตัวบล็อก", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  COALESCE(NULLIF(b.program_name, ''), 'ไม่ระบุ') AS \"โปรแกรม\",\n  COALESCE(NULLIF(b.host_name, ''), 'ไม่ระบุ')   AS \"เครื่อง\",\n  b.login_name                                  AS \"login\",\n  count(*)                                      AS \"ปรากฏเป็นตัวบล็อก\",\n  max(b.sampled_at)                             AS \"ล่าสุด\"\nFROM sql_blocking_samples b\nWHERE $__timeFilter(b.sampled_at)\n  AND EXISTS (\n    SELECT 1 FROM sql_blocking_samples x\n    WHERE x.sampled_at = b.sampled_at\n      AND x.blocking_session_id = b.session_id\n  )\nGROUP BY 1, 2, 3\nORDER BY 4 DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "เหตุการณ์บล็อกล่าสุด",
+      "description": "แต่ละแถวคือ session ที่กำลังรออยู่ ณ วินาทีที่เก็บตัวอย่าง คอลัมน์ถูกบล็อกโดยคือเลข session ของตัวที่ถือ lock",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 13, "x": 11, "y": 32 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "รอ ms" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 5000 },
+                    { "color": "red", "value": 25000 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "คำสั่ง SQL" },
+            "properties": [{ "id": "custom.width", "value": 420 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "เวลา", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  sampled_at           AS \"เวลา\",\n  session_id           AS \"session\",\n  blocking_session_id  AS \"ถูกบล็อกโดย\",\n  wait_type            AS \"ชนิดการรอ\",\n  wait_ms              AS \"รอ ms\",\n  login_name           AS \"login\",\n  host_name            AS \"เครื่อง\",\n  program_name         AS \"โปรแกรม\",\n  sql_text             AS \"คำสั่ง SQL\"\nFROM sql_blocking_samples\nWHERE $__timeFilter(sampled_at)\n  AND blocking_session_id <> 0\nORDER BY sampled_at DESC, wait_ms DESC\nLIMIT 200"
+        }
+      ]
+    }
+  ]
+}

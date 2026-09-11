@@ -1,0 +1,265 @@
+{
+  "uid": "kong-monthly-report",
+  "title": "Kong — Monthly Report (รายงานรายเดือน)",
+  "tags": ["kong", "monthly", "executive"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "",
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": { "hidden": true },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "month",
+        "label": "เดือน",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "konglogs" },
+        "query": "SELECT to_char(day, 'YYYY-MM') AS __value FROM mv_kong_day GROUP BY 1 ORDER BY 1 DESC",
+        "definition": "เดือนที่มีข้อมูล (จากตารางสรุปรายวัน — refresh ทุก 6 ชม.)",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "sort": 0,
+        "current": { "selected": false, "text": "", "value": "" },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "เรียก API ทั้งหมด",
+      "description": "นับเฉพาะเส้นที่มี route จริง (ตัด bot สแกน/หน้าจอ Grafana ออก) · ข้อมูลสดถึงรอบ refresh ล่าสุด (ทุก 6 ชม.)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT coalesce(sum(calls),0)::bigint AS v FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month'" }]
+    },
+    {
+      "type": "stat",
+      "title": "อัตราสำเร็จ",
+      "description": "% ของ request ที่ได้ status < 400",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 98 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT round(sum(ok_calls) * 100.0 / nullif(sum(calls),0), 1) AS v FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month'" }]
+    },
+    {
+      "type": "stat",
+      "title": "ผู้ใช้งาน (คน)",
+      "description": "จำนวนผู้ใช้จาก JWT ไม่ซ้ำทั้งเดือน (นับจากตาราง log จริง)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT count(DISTINCT jwt_user)::int AS v FROM kong_api_logs WHERE request_time >= to_date('$month','YYYY-MM')::timestamp - interval '7 hours' AND request_time < to_date('$month','YYYY-MM')::timestamp + interval '1 month' - interval '7 hours' AND jwt_user IS NOT NULL" }]
+    },
+    {
+      "type": "stat",
+      "title": "อุปกรณ์ (เครื่อง)",
+      "description": "จำนวนเครื่องมือถือไม่ซ้ำทั้งเดือน (จาก Device_ID)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT count(DISTINCT device_id)::int AS v FROM kong_api_logs WHERE request_time >= to_date('$month','YYYY-MM')::timestamp - interval '7 hours' AND request_time < to_date('$month','YYYY-MM')::timestamp + interval '1 month' - interval '7 hours' AND device_id IS NOT NULL" }]
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลส่งออก (ขาออกเท่านั้น)",
+      "description": "ไบต์ที่ gateway ตอบให้ผู้ใช้ทั้งเดือน — ไม่รวมขาเข้า (อัปโหลดรูปงาน ซึ่งใหญ่กว่าหลายเท่าแต่ฟรี) และไม่รวมหน้าจอ Grafana/bot · ดูแยกขาเข้า/ออกรายวันได้ใน Deep Analysis หัวข้อ 5",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT coalesce(sum(download),0)::bigint AS v FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month'" }]
+    },
+    {
+      "type": "stat",
+      "title": "ความเร็ว p95",
+      "description": "95% ของ request เร็วกว่าค่านี้ (คำนวณจากตาราง log จริงทั้งเดือน)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1000 }, { "color": "red", "value": 3000 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)::int AS v FROM kong_api_logs WHERE request_time >= to_date('$month','YYYY-MM')::timestamp - interval '7 hours' AND request_time < to_date('$month','YYYY-MM')::timestamp + interval '1 month' - interval '7 hours' AND route_name IS NOT NULL" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "การเรียก API รายวัน แยกรายแอป — เดือน $month",
+      "description": "สีตรงกับวงกลมสัดส่วนรายแอปด้านขวา",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 85, "lineWidth": 0, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "BevProApp" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } } ] },
+          { "matcher": { "id": "byName", "options": "anonymous" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FADE2A" } } ] },
+          { "matcher": { "id": "byName", "options": "bevpro-safety" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } } ] },
+          { "matcher": { "id": "byName", "options": "bpa-gps-tracking" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2495C" } } ] },
+          { "matcher": { "id": "byName", "options": "coffee-machine-system" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#5794F2" } } ] },
+          { "matcher": { "id": "byName", "options": "service-management" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#B877D9" } } ] },
+          { "matcher": { "id": "byName", "options": "pro-iot-mobile" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#37872D" } } ] },
+          { "matcher": { "id": "byName", "options": "pro-iot-board" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FA6400" } } ] },
+          { "matcher": { "id": "byName", "options": "iot" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#E02F44" } } ] },
+          { "matcher": { "id": "byName", "options": "iot-dashboard" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#C4162A" } } ] },
+          { "matcher": { "id": "byName", "options": "tech-agentic-app" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8AB8FF" } } ] },
+          { "matcher": { "id": "byName", "options": "Mobile" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2CC0C" } } ] },
+          { "matcher": { "id": "byName", "options": "bpa-helpdesk" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#A352CC" } } ] },
+          { "matcher": { "id": "byName", "options": "apptest-other" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8E8E8E" } } ] },
+          { "matcher": { "id": "byName", "options": "e2e-latency-test" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#64686D" } } ] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [{ "refId": "A", "format": "time_series", "rawQuery": true,
+        "rawSql": "SELECT day::timestamp AS time, app AS metric, calls::int AS \"เรียก\" FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' ORDER BY 1" }]
+    },
+    {
+      "type": "piechart",
+      "title": "สัดส่วนการใช้รายแอป",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [
+          { "matcher": { "id": "byName", "options": "BevProApp" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } } ] },
+          { "matcher": { "id": "byName", "options": "anonymous" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FADE2A" } } ] },
+          { "matcher": { "id": "byName", "options": "bevpro-safety" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } } ] },
+          { "matcher": { "id": "byName", "options": "bpa-gps-tracking" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2495C" } } ] },
+          { "matcher": { "id": "byName", "options": "coffee-machine-system" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#5794F2" } } ] },
+          { "matcher": { "id": "byName", "options": "service-management" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#B877D9" } } ] },
+          { "matcher": { "id": "byName", "options": "pro-iot-mobile" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#37872D" } } ] },
+          { "matcher": { "id": "byName", "options": "pro-iot-board" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FA6400" } } ] },
+          { "matcher": { "id": "byName", "options": "iot" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#E02F44" } } ] },
+          { "matcher": { "id": "byName", "options": "iot-dashboard" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#C4162A" } } ] },
+          { "matcher": { "id": "byName", "options": "tech-agentic-app" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8AB8FF" } } ] },
+          { "matcher": { "id": "byName", "options": "Mobile" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2CC0C" } } ] },
+          { "matcher": { "id": "byName", "options": "bpa-helpdesk" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#A352CC" } } ] },
+          { "matcher": { "id": "byName", "options": "apptest-other" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#8E8E8E" } } ] },
+          { "matcher": { "id": "byName", "options": "e2e-latency-test" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#64686D" } } ] }
+      ] },
+      "options": { "reduceOptions": { "values": true, "calcs": ["lastNotNull"], "fields": "" }, "pieType": "donut", "displayLabels": ["percent"], "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT app AS \"แอป\", sum(calls)::bigint AS \"เรียก\" FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1 ORDER BY 2 DESC LIMIT 10" }]
+    },
+    {
+      "type": "barchart",
+      "title": "ปัญหา (5xx) รายวัน — ศูนย์คือดี",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" }, "custom": { "fillOpacity": 75 } }, "overrides": [] },
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT to_char(day,'DD') AS \"วันที่\", sum(err5xx)::int AS \"5xx\" FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1 ORDER BY 1" }]
+    },
+    {
+      "type": "table",
+      "title": "Top 10 เส้นที่ใช้หนักสุด",
+      "description": "p95 แย่สุด = ค่า p95 ของวันที่แย่ที่สุดในเดือนของเส้นนั้น",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "custom": { "filterable": false } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "ข้อมูลออก" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "p95 แย่สุด" }, "properties": [ { "id": "unit", "value": "ms" } ] }
+      ] },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT mpath AS \"เส้น\", sum(calls)::bigint AS \"เรียก\", max(p95_ms) AS \"p95 แย่สุด\", sum(download)::bigint AS \"ข้อมูลออก\" FROM mv_kong_day_path WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1 ORDER BY 2 DESC LIMIT 10" }]
+    },
+    {
+      "type": "table",
+      "title": "สรุปรายแอป — เทียบเดือนก่อนหน้า",
+      "description": "เปลี่ยน % = จำนวนเรียกเทียบเดือนก่อน · ผู้ใช้/วัน (พีค) = จำนวนผู้ใช้ของวันที่มีคนใช้มากสุด · แอปที่ยังไม่ส่ง X-App-Name แสดงเป็นชื่อ consumer เช่น BevProApp",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "custom": { "filterable": true } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "ข้อมูลออก" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "สำเร็จ %" }, "properties": [ { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 } ] },
+        { "matcher": { "id": "byName", "options": "เปลี่ยน %" }, "properties": [ { "id": "unit", "value": "percent" }, { "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "text", "value": -10 }, { "color": "green", "value": 10 } ] } } ] }
+      ] },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "WITH cur AS (SELECT app, sum(calls)::bigint AS c, round(sum(ok_calls) * 100.0 / nullif(sum(calls),0), 1) AS ok, max(users)::int AS u, sum(download)::bigint AS eg FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1), prev AS (SELECT app, sum(calls)::bigint AS c FROM mv_kong_day_app WHERE day >= to_date('$month','YYYY-MM') - interval '1 month' AND day < to_date('$month','YYYY-MM') GROUP BY 1) SELECT cur.app AS \"แอป\", cur.c AS \"เรียก\", cur.ok AS \"สำเร็จ %\", cur.u AS \"ผู้ใช้/วัน (พีค)\", cur.eg AS \"ข้อมูลออก\", coalesce(prev.c, 0) AS \"เดือนก่อน\", CASE WHEN coalesce(prev.c,0) > 0 THEN round((cur.c - prev.c) * 100.0 / prev.c, 0) END AS \"เปลี่ยน %\" FROM cur LEFT JOIN prev USING (app) ORDER BY cur.c DESC LIMIT 15" }]
+    },
+    {
+      "type": "barchart",
+      "title": "ชั่วโมงเร่งด่วน — การเรียกแยกตามชั่วโมงของวัน (รวมทั้งเดือน)",
+      "description": "ดูว่าระบบถูกใช้หนักช่วงเวลาไหนของวัน — ใช้วางแผน maintenance / capacity",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "purple" }, "custom": { "fillOpacity": 75 } }, "overrides": [] },
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT lpad(hh::text, 2, '0') AS \"ชั่วโมง\", sum(calls)::int AS \"เรียก\" FROM mv_kong_hour WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1 ORDER BY 1" }]
+    },
+    {
+      "type": "stat",
+      "title": "ถูกสแกนจากภายนอก — gateway กันไว้ทั้งหมด",
+      "description": "request จาก bot/ผู้ไม่หวังดีที่ยิงหา path ที่ไม่มีอยู่ (เช่นหาช่องโหว่ WordPress/phpMyAdmin) — Kong ตอบ 404 จบที่ประตู ไม่ถึงระบบข้างใน",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT coalesce(sum(bot_hits),0)::bigint AS v FROM mv_kong_day WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month'" }]
+    },
+    {
+      "type": "stat",
+      "title": "ผู้ใช้ active เฉลี่ยต่อวัน",
+      "description": "จำนวนคนที่ใช้งานจริงเฉลี่ยในแต่ละวันของเดือน",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT round(avg(users))::int AS v FROM mv_kong_day WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' AND users > 0" }]
+    },
+    {
+      "type": "table",
+      "title": "🏆 Top 10 การใช้อินเทอร์เน็ตรายพนักงาน — เดือน $month",
+      "description": "ดาวน์โหลด = ข้อมูลที่ระบบส่งให้ · อัปโหลด = ข้อมูลที่ส่งขึ้นมา (รูปงาน ฯลฯ) · รวมทุกแอปที่ผ่าน gateway · ใช้ประกอบเรื่องโควตาอินเทอร์เน็ตรายเครื่อง (query ตาราง log จริง — อาจใช้เวลา 2-3 วิ)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 42 },
+      "fieldConfig": { "defaults": { "custom": { "filterable": true } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "ดาวน์โหลด" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "อัปโหลด" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "รวม" }, "properties": [
+          { "id": "unit", "value": "bytes" },
+          { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+          { "id": "color", "value": { "mode": "continuous-BlPu" } },
+          { "id": "custom.width", "value": 240 }
+        ] }
+      ] },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT coalesce(jwt_user, '(ไม่ระบุ)') AS \"พนักงาน\", left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 40) AS \"แอปที่ใช้\", count(*)::int AS \"เรียก\", count(DISTINCT device_id)::int AS \"เครื่อง\", sum(coalesce(response_size,0))::bigint AS \"ดาวน์โหลด\", sum(coalesce(request_size,0))::bigint AS \"อัปโหลด\", (sum(coalesce(response_size,0)) + sum(coalesce(request_size,0)))::bigint AS \"รวม\" FROM kong_api_logs WHERE request_time >= to_date('$month','YYYY-MM')::timestamp - interval '7 hours' AND request_time < to_date('$month','YYYY-MM')::timestamp + interval '1 month' - interval '7 hours' AND jwt_user IS NOT NULL GROUP BY 1 ORDER BY 7 DESC LIMIT 10" }]
+    },
+    {
+      "type": "table",
+      "title": "⬇️ Top 10 เส้น API ส่งข้อมูลออกอินเทอร์เน็ตสูงสุด — เดือน $month (ใช้ประเมินค่าใช้จ่าย)",
+      "description": "นับเฉพาะ response ที่ส่งให้ client บน internet (ตัด traffic ภายใน VNet/docker ที่ไม่เสียเงินออกแล้ว) · ค่าประมาณ = ไบต์ × $0.12/GB — เป็นเพดาน เพราะ 100 GB แรก/เดือนของทั้ง subscription ฟรี · ตัวเลขใน path ถูกยุบเป็น {id}",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 53 },
+      "fieldConfig": { "defaults": { "custom": { "filterable": true } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "อัปโหลด (ฟรี)" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "ค่าประมาณ (USD)" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 4 } ] },
+        { "matcher": { "id": "byName", "options": "ออกอินเทอร์เน็ต (เสียเงิน)" }, "properties": [
+          { "id": "unit", "value": "bytes" },
+          { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+          { "id": "color", "value": { "mode": "continuous-GrYlRd" } },
+          { "id": "custom.width", "value": 240 }
+        ] }
+      ] },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true,
+        "rawSql": "SELECT mpath AS \"เส้น API\", left(string_agg(DISTINCT app, ', '), 40) AS \"แอปที่ใช้\", sum(calls)::bigint AS \"เรียก\", sum(upload)::bigint AS \"อัปโหลด (ฟรี)\", coalesce(sum(download_inet),0)::bigint AS \"ออกอินเทอร์เน็ต (เสียเงิน)\", round(coalesce(sum(download_inet),0)::numeric / 1e9 * 0.12, 4) AS \"ค่าประมาณ (USD)\" FROM mv_kong_day_path WHERE day >= to_date('$month','YYYY-MM') AND day < to_date('$month','YYYY-MM') + interval '1 month' GROUP BY 1 ORDER BY 5 DESC LIMIT 10" }]
+    }
+  ]
+}

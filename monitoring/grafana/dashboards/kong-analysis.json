@@ -435,7 +435,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(jwt_user, '(ไม่มีโทเคน)') AS \"ผู้ใช้\", coalesce(max(consumer_username) FILTER (WHERE consumer_username <> 'anonymous'), 'anonymous') AS app, count(DISTINCT device_id) AS devices, count(*) AS calls, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
+          "rawSql": "SELECT coalesce(jwt_user, '(ไม่มีโทเคน)') AS \"ผู้ใช้\", left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS app, count(DISTINCT device_id) AS devices, count(*) AS calls, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
         }
       ]
     },
@@ -521,14 +521,14 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, count(*) FILTER (WHERE status_code < 400) AS ok, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, count(*) FILTER (WHERE status_code < 400) AS ok, count(*) FILTER (WHERE status_code >= 400) AS errors, coalesce(round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)),0)::int AS p95_ms, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS bytes, left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY calls DESC LIMIT 25"
         }
       ]
     },
     {
       "type": "table",
       "title": "Log การเรียก API ล่าสุด (ทุกสถานะ)",
-      "description": "รายการดิบเรียงตามเวลา ใช้ไล่ดูว่าแอปยิงอะไรมาบ้าง",
+      "description": "รายการดิบเรียงตามเวลา แสดง 10,000 แถวล่าสุดในช่วงเวลาที่เลือก (~2-3 ชม.ของ traffic ปกติ) — จะดูวันก่อนๆ ให้ตั้ง Absolute time range เจาะช่วงที่ต้องการ · ค้นทั้งวันแบบเลือกเส้น/แอป ใช้ dashboard 'ใครเรียกอะไร'",
       "datasource": {
         "type": "postgres",
         "uid": "konglogs"
@@ -610,7 +610,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT request_time AS เวลา, coalesce(app_name, consumer_username, 'anonymous') AS app, method, split_part(path,'?',1) AS path, status_code AS status, latency_ms, (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS bytes, route_name FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 100"
+          "rawSql": "SELECT request_time AS เวลา, coalesce(app_name, consumer_username, 'anonymous') AS app, method, split_part(path,'?',1) AS path, status_code AS status, latency_ms, (coalesce(request_size,0)+coalesce(response_size,0))::bigint AS bytes, route_name FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 10000"
         }
       ]
     },
@@ -786,7 +786,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT request_time AS \"เวลา\", client_ip AS \"IP\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", method AS \"method\", split_part(path,'?',1) AS \"path\", status_code AS \"status\", request_size AS \"ขนาด\", request_body AS \"body\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND request_body IS NOT NULL AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' ORDER BY request_time DESC LIMIT 150000"
+          "rawSql": "SELECT request_time AS \"เวลา\", client_ip AS \"IP\", coalesce(app_name, consumer_username, 'anonymous') AS \"แอป\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", method AS \"method\", split_part(path,'?',1) AS \"path\", status_code AS \"status\", request_size AS \"ขนาด\", request_body AS \"body\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND request_body IS NOT NULL AND route_name IS NOT NULL AND path NOT LIKE '/grafana/%' ORDER BY request_time DESC LIMIT 150000"
         }
       ]
     },
@@ -891,7 +891,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50_ms, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, max(latency_ms) AS max_ms FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1 ORDER BY p95_ms DESC LIMIT 15"
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, count(*) AS calls, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))::int AS p50_ms, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::int AS p95_ms, max(latency_ms) AS max_ms, left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code < 400 GROUP BY 1 ORDER BY p95_ms DESC LIMIT 15"
         }
       ]
     },
@@ -1136,7 +1136,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS ล่าสุด FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, status_code, count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, max(request_time) AS ล่าสุด, left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 AND status_code NOT IN (401, 404) GROUP BY 1, 2 ORDER BY hits DESC LIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -1187,7 +1187,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, route_name AS \"route ที่รับ\", status_code, CASE WHEN route_name IS NULL THEN '① ไม่มี route เลย — บอท/path มั่ว (Kong ตัดจบ ไม่ถึง backend)' WHEN status_code = 401 AND latency_ms <= 1 THEN '② Kong ปฏิเสธ — ไม่มี token / token หมดอายุ / iss ไม่ตรง' WHEN status_code = 401 THEN '③ backend ปฏิเสธ — token ผ่าน Kong แล้วแต่แอปไม่ยอมรับ' WHEN status_code = 404 THEN '④ ผ่าน gateway แล้วแต่ backend ไม่มี endpoint นี้ — path พิมพ์ผิด?' WHEN status_code = 429 THEN '⑤ ชน rate limit' WHEN status_code >= 500 THEN '⑥ backend พัง (ต้องแก้ด่วน)' ELSE '⑦ อื่น ๆ' END AS \"สาเหตุ\", count(*) AS hits, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 GROUP BY 1, 2, 3, 4 ORDER BY hits DESC LIMIT 25"
+          "rawSql": "SELECT split_part(path, '?', 1) AS endpoint, route_name AS \"route ที่รับ\", status_code, CASE WHEN route_name IS NULL THEN '① ไม่มี route เลย — บอท/path มั่ว (Kong ตัดจบ ไม่ถึง backend)' WHEN status_code = 401 AND latency_ms <= 1 THEN '② Kong ปฏิเสธ — ไม่มี token / token หมดอายุ / iss ไม่ตรง' WHEN status_code = 401 THEN '③ backend ปฏิเสธ — token ผ่าน Kong แล้วแต่แอปไม่ยอมรับ' WHEN status_code = 404 THEN '④ ผ่าน gateway แล้วแต่ backend ไม่มี endpoint นี้ — path พิมพ์ผิด?' WHEN status_code = 429 THEN '⑤ ชน rate limit' WHEN status_code >= 500 THEN '⑥ backend พัง (ต้องแก้ด่วน)' ELSE '⑦ อื่น ๆ' END AS \"สาเหตุ\", count(*) AS hits, max(request_time) AS \"ล่าสุด\", left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code >= 400 GROUP BY 1, 2, 3, 4 ORDER BY hits DESC LIMIT 25"
         }
       ]
     },
@@ -1209,7 +1209,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT split_part(path, '?', 1) AS \"path ที่ถูกเรียก\", route_name AS \"route ที่รับไป\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(consumer_username, 'anonymous') AS app, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
+          "rawSql": "SELECT split_part(path, '?', 1) AS \"path ที่ถูกเรียก\", route_name AS \"route ที่รับไป\", count(*) AS hits, round(avg(latency_ms))::int AS avg_ms, coalesce(app_name, consumer_username, 'anonymous') AS app, max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND status_code = 404 AND route_name IS NOT NULL GROUP BY 1, 2, 5 ORDER BY hits DESC LIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -1403,7 +1403,7 @@
     },
     {
       "type": "table",
-      "title": "ปริมาณข้อมูลรายแอป (consumer)",
+      "title": "ปริมาณข้อมูลรายแอป",
       "description": "ใช้ออกรายงานเรียกเก็บ / วางแผนแพ็กเกจ — เทียบกับโควตา 20 GB ต่อเดือน",
       "datasource": {
         "type": "postgres",
@@ -1507,7 +1507,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(consumer_username,'anonymous') AS client, count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY total DESC LIMIT 20"
+          "rawSql": "SELECT coalesce(app_name, consumer_username, 'anonymous') AS client, count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY total DESC LIMIT 20"
         }
       ]
     },
@@ -1617,7 +1617,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(jwt_user, '(ไม่มีโทเคน)') AS \"ผู้ใช้\", count(DISTINCT device_id) AS \"เครื่อง\", count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb FROM kong_api_logs WHERE request_time >= date_trunc('month', now()) AND jwt_user IS NOT NULL GROUP BY 1 ORDER BY total DESC LIMIT 50"
+          "rawSql": "SELECT coalesce(jwt_user, '(ไม่มีโทเคน)') AS \"ผู้ใช้\", count(DISTINCT device_id) AS \"เครื่อง\", count(*) AS calls, coalesce(sum(request_size),0)::bigint AS upload, coalesce(sum(response_size),0)::bigint AS download, coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0)::bigint AS total, round(100.0 * coalesce(sum(coalesce(request_size,0)+coalesce(response_size,0)),0) / (20.0*1024*1024*1024), 2) AS pct_of_20gb, left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE request_time >= date_trunc('month', now()) AND jwt_user IS NOT NULL GROUP BY 1 ORDER BY total DESC LIMIT 50"
         }
       ]
     },
@@ -2027,7 +2027,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT client_ip AS \"IP\", coalesce(jwt_user, '-') AS \"ผู้ใช้\", count(*) AS calls, round(count(*) / 60.0, 1) AS \"เฉลี่ย/นาที\", count(*) FILTER (WHERE status_code = 429) AS \"โดน 429\" FROM kong_api_logs WHERE request_time >= now() - interval '1 hour' GROUP BY 1, 2 ORDER BY calls DESC LIMIT 15"
+          "rawSql": "SELECT client_ip AS \"IP\", coalesce(jwt_user, '-') AS \"ผู้ใช้\", count(*) AS calls, round(count(*) / 60.0, 1) AS \"เฉลี่ย/นาที\", count(*) FILTER (WHERE status_code = 429) AS \"โดน 429\", left(string_agg(DISTINCT coalesce(app_name, consumer_username, 'anonymous'), ', '), 60) AS \"แอป\" FROM kong_api_logs WHERE request_time >= now() - interval '1 hour' GROUP BY 1, 2 ORDER BY calls DESC LIMIT 15"
         }
       ]
     },

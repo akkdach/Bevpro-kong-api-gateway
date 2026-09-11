@@ -1,0 +1,233 @@
+{
+  "uid": "kong-egress-drilldown",
+  "title": "Kong — Egress drill-down (รายการ request ตามไบต์ที่ออก)",
+  "tags": ["kong", "egress", "bandwidth", "cost"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "",
+  "time": { "from": "now-24h", "to": "now" },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "topn",
+        "label": "Top N",
+        "type": "custom",
+        "query": "12,25,50,100,500",
+        "current": { "selected": true, "text": "12", "value": "12" },
+        "options": [
+          { "selected": true, "text": "12", "value": "12" },
+          { "selected": false, "text": "25", "value": "25" },
+          { "selected": false, "text": "50", "value": "50" },
+          { "selected": false, "text": "100", "value": "100" },
+          { "selected": false, "text": "500", "value": "500" }
+        ]
+      },
+      {
+        "name": "app",
+        "label": "แอป",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "konglogs" },
+        "query": "SELECT DISTINCT coalesce(app_name, consumer_username, 'anonymous') AS __value FROM kong_api_logs WHERE $__timeFilter(request_time) ORDER BY 1",
+        "definition": "แอปที่มี traffic ในช่วงเวลาที่เลือก",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "options": []
+      },
+      {
+        "name": "rate",
+        "label": "อัตราค่า egress (USD/GB)",
+        "type": "textbox",
+        "query": "0.12",
+        "current": { "selected": true, "text": "0.12", "value": "0.12" },
+        "options": [{ "selected": true, "text": "0.12", "value": "0.12" }]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "ข้อมูลออกอินเทอร์เน็ต (มีค่าใช้จ่าย)",
+      "description": "response ที่ทะลุขอบ Azure ออก internet จริง (ตัด client ภายใน VNet/docker และบริการ Azure ของเราเองใน azure_internal_ips ออกแล้ว)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(response_size) FILTER (WHERE client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips)), 0)::bigint AS v FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%'"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ข้อมูลภายในระบบ (ไม่มีค่าใช้จ่าย)",
+      "description": "response ที่ออกจาก Kong แต่ไม่ชนขอบ — ตอบให้บริการ Azure ของเราเอง, VNet, docker",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(response_size) FILTER (WHERE NOT (client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips))), 0)::bigint AS v FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%'"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "ค่าใช้จ่ายประมาณการ (เฉพาะส่วนออกเน็ต)",
+      "description": "ส่วนที่ออกอินเทอร์เน็ต × $rate USD/GB — เพดานประมาณการ (100 GB แรก/เดือนของ subscription ฟรี)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(coalesce(sum(response_size) FILTER (WHERE client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips)), 0)::numeric / 1e9 * $rate::numeric, 2) AS v FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%'"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "จำนวน request",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*)::int AS v FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%'"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ปริมาณข้อมูลต่อชั่วโมง — ออกอินเทอร์เน็ต vs ภายในระบบ",
+      "description": "ส้ม = ออกอินเทอร์เน็ตภายนอก (มีค่าใช้จ่าย) · เขียว = ภายในระบบ (ไม่มีค่าใช้จ่าย)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "bars", "fillOpacity": 75, "lineWidth": 0, "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "ออกอินเทอร์เน็ต (เสียเงิน)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } } ] },
+          { "matcher": { "id": "byName", "options": "ภายในระบบ (ฟรี)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } } ] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('hour', request_time) AS time, CASE WHEN client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips) THEN 'ออกอินเทอร์เน็ต (เสียเงิน)' ELSE 'ภายในระบบ (ฟรี)' END AS metric, sum(coalesce(response_size, 0))::bigint AS egress FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%' GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "รายการ egress (drill-down) — Top $topn request ตามไบต์ที่ออก · ทุกแถว = 1 request",
+      "description": "คอลัมน์เส้นทาง: ออกอินเทอร์เน็ต = มีค่าใช้จ่าย · ภายในระบบ = ฟรี (ค่าประมาณเป็น 0) · กดกรวยที่หัวคอลัมน์เพื่อกรอง",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true, "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Egress" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "color", "value": { "mode": "continuous-YlRd" } },
+              { "id": "custom.width", "value": 200 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ค่าประมาณ (USD)" },
+            "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 4 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ใช้เวลา" },
+            "properties": [ { "id": "unit", "value": "ms" }, { "id": "custom.width", "value": 90 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "#" },
+            "properties": [ { "id": "custom.width", "value": 50 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "เส้นทาง" },
+            "properties": [ { "id": "custom.width", "value": 110 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "สถานะ" },
+            "properties": [ { "id": "custom.width", "value": 80 } ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT row_number() OVER (ORDER BY response_size DESC NULLS LAST)::int AS \"#\", request_time AS \"เวลาเริ่ม\", latency_ms AS \"ใช้เวลา\", coalesce(app_name, consumer_username, 'anonymous') AS \"แอป\", coalesce(jwt_user, '-') AS \"ผู้ใช้\", client_ip AS \"Client IP\", method || ' ' || path AS \"เส้นที่เรียก\", CASE WHEN client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips) THEN 'ออกอินเทอร์เน็ต' ELSE 'ภายในระบบ' END AS \"เส้นทาง\", status_code AS \"สถานะ\", coalesce(response_size, 0)::bigint AS \"Egress\", CASE WHEN client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips) THEN round(coalesce(response_size, 0)::numeric / 1e9 * $rate::numeric, 4) ELSE 0 END AS \"ค่าประมาณ (USD)\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%' ORDER BY response_size DESC NULLS LAST LIMIT $topn"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "สรุปราย แอป + เส้น — แยกออกอินเทอร์เน็ต / ภายในระบบ",
+      "description": "รวมทั้งช่วงเวลาที่เลือก · ตัวเลขใน path ถูกยุบเป็น {id} · ค่าประมาณคิดจากเฉพาะส่วนที่ข้ามขอบ",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 28 },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ออกอินเทอร์เน็ต (เสียเงิน)" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "color", "value": { "mode": "continuous-YlRd" } },
+              { "id": "custom.width", "value": 200 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ภายในระบบ (ฟรี)" },
+            "properties": [ { "id": "unit", "value": "bytes" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ค่าประมาณ (USD)" },
+            "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 4 } ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(app_name, consumer_username, 'anonymous') AS \"แอป\", method || ' ' || regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') AS \"เส้น\", count(*)::int AS \"ครั้ง\", coalesce(sum(response_size) FILTER (WHERE client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips)), 0)::bigint AS \"ออกอินเทอร์เน็ต (เสียเงิน)\", coalesce(sum(response_size) FILTER (WHERE NOT (client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips))), 0)::bigint AS \"ภายในระบบ (ฟรี)\", round(coalesce(sum(response_size) FILTER (WHERE client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip !~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' AND client_ip NOT IN (SELECT ip FROM azure_internal_ips)), 0)::numeric / 1e9 * $rate::numeric, 4) AS \"ค่าประมาณ (USD)\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND coalesce(app_name, consumer_username, 'anonymous') IN ($app) AND path NOT LIKE '/grafana/%' GROUP BY 1, 2 ORDER BY 4 DESC LIMIT 50"
+        }
+      ]
+    }
+  ]
+}

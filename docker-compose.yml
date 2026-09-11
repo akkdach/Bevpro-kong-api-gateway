@@ -256,6 +256,13 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-ChangeMe_Grafana1}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # datasource SqlServerBevPro (monitoring/grafana/provisioning/datasources/mssql.yml)
+      # อ่าน DMV ของ SQL Server ที่ backend เพื่อดู lock/blocking — ต้องเป็น login
+      # read-only ที่มี VIEW SERVER STATE เท่านั้น ห้ามใช้ sa (สร้างด้วย scripts/create-grafana-sql-login.sql)
+      MSSQL_GRAFANA_HOST: ${MSSQL_GRAFANA_HOST:-10.0.0.4:1433}
+      MSSQL_GRAFANA_DB: ${MSSQL_GRAFANA_DB:-BevproFsProd}
+      MSSQL_GRAFANA_USER: ${MSSQL_GRAFANA_USER:-grafana_reader}
+      MSSQL_GRAFANA_PASSWORD: ${MSSQL_GRAFANA_PASSWORD:-}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
