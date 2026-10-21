@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "BevPro Gateway - SIMS SAP Integration",
+    "description": "Test requests for the SIMS ↔ SAP PI integration through the BevPro API Gateway.\n\n| Direction | Gateway path | Upstream |\n|---|---|---|\n| SIMS → SAP | `/sap-pi-uat/XISOAPAdapter/MessageServlet` | SAP PI QAS `qbx.thainamthip.co.th:8100` |\n| SAP → SIMS | `/sims-uat/api/v1/integrations/sap/service-orders` | SIMS UAT |\n\n### Setup\nSet the **Current value** of `sapPassword` and `simsPassword` in the collection variables. Do not store passwords in Initial value.\n\n### Notes\n- SIMS → SAP: the caller IP must be in the gateway allow list, otherwise the gateway returns 403.\n- `SVC_NAV_01` is shared with D365 F&O. Stop after a 401 — repeated failed logins lock the account.\n- Work Order Update creates a message in SAP PI. Submit Service Order writes to SIMS UAT.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "SIMS to SAP",
+      "description": "Outbound messages from SIMS to SAP PI (interface `WorkOrderUpdate_Out`).",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "value": "{{sapUsername}}",
+            "type": "string"
+          },
+          {
+            "key": "password",
+            "value": "{{sapPassword}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Work Order Update (In Progress)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/sap-pi-uat/XISOAPAdapter/MessageServlet?senderService=sys_TNTLFTDNAVService&interface=WorkOrderUpdate_Out&interfaceNamespace=http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "sap-pi-uat",
+                "XISOAPAdapter",
+                "MessageServlet"
+              ],
+              "query": [
+                {
+                  "key": "senderService",
+                  "value": "sys_TNTLFTDNAVService"
+                },
+                {
+                  "key": "interface",
+                  "value": "WorkOrderUpdate_Out"
+                },
+                {
+                  "key": "interfaceNamespace",
+                  "value": "http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/"
+                }
+              ]
+            },
+            "description": "Sends a work order update (`WorkOrderUpdate_Out`) to SAP PI.\n\nSample payload: in-progress order 000042970855 (`USERSTATUS` INPR, `FTD_INB_WORK_ORDER`). Expected: 200.",
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:sen=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header /><soapenv:Body><sen:FTD_INB_WORK_ORDER><IM_INB_ORDER><ORDERID>000042970855</ORDERID><NOTIF_NO>000033000243</NOTIF_NO><EQUIPMENT>BI-01004605</EQUIPMENT><PMACTTYPE>PME</PMACTTYPE><ZZMATNR>TBIB</ZZMATNR><ZZEQUIPMENT></ZZEQUIPMENT><ZZCDE_CODE></ZZCDE_CODE><ZZIMEI_CON_DEV></ZZIMEI_CON_DEV><ZZSIM_MOBILE_NO></ZZSIM_MOBILE_NO><ZZSIM_ICCID></ZZSIM_ICCID><ZZSIM_PROVIDER></ZZSIM_PROVIDER><ZZCON_DEV_TYPE></ZZCON_DEV_TYPE><ZZSV_AMT>0.00</ZZSV_AMT><ZZSP_AMT>0.00</ZZSP_AMT><ZZUSIS_REASON></ZZUSIS_REASON><ZZUSIS_REA_TEXT></ZZUSIS_REA_TEXT><CLOSE_K2_TEXT></CLOSE_K2_TEXT><SYS_STATUS></SYS_STATUS><USERSTATUS>INPR</USERSTATUS><ZZMOBILE_STATUS></ZZMOBILE_STATUS><ZZRP_APPROVE></ZZRP_APPROVE><ZZCUS_NAME></ZZCUS_NAME><DISTANCE>0</DISTANCE><OPERATIONS><item><ORDERID>000042970855</ORDERID><ACTIVITY>0010</ACTIVITY><CONF_NO>0</CONF_NO><DESCRIPTION>เวลาปฏิบัติงาน</DESCRIPTION><CONTROL_KEY></CONTROL_KEY><WORK_CNTR>BPTV058</WORK_CNTR><PLANT>8017</PLANT><WORK_ACTUAL>20</WORK_ACTUAL><UN_WORK></UN_WORK><ACTTYPE>Y20001</ACTTYPE><ACT_START_DATE></ACT_START_DATE><ACT_START_TIME>00:00:00</ACT_START_TIME><ACT_END_DATE></ACT_END_DATE><ACT_END_TIME>00:00:00</ACT_END_TIME><WORKER><item><ORDERID>000042970855</ORDERID><ACTIVITY>0010</ACTIVITY><PERSONNEL_NUMBER>99999999</PERSONNEL_NUMBER><NAME>Dummy_Resource</NAME></item></WORKER></item></OPERATIONS><COMPONENTS /><NOTIFICATION><ORDERID>000042970855</ORDERID><NOTIF_NO>000033000243</NOTIF_NO><NOTIF_CODEGROUP></NOTIF_CODEGROUP><NOTIF_CODE></NOTIF_CODE><NOTIF_CODE_TEXT></NOTIF_CODE_TEXT><EQUIPMENT_WORKABLE></EQUIPMENT_WORKABLE><CATALOG_CODE_ACTUAL /></NOTIFICATION><DOCUMENTS /></IM_INB_ORDER></sen:FTD_INB_WORK_ORDER></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Work Order Update (Repair Completed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/sap-pi-uat/XISOAPAdapter/MessageServlet?senderService=sys_TNTLFTDNAVService&interface=WorkOrderUpdate_Out&interfaceNamespace=http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "sap-pi-uat",
+                "XISOAPAdapter",
+                "MessageServlet"
+              ],
+              "query": [
+                {
+                  "key": "senderService",
+                  "value": "sys_TNTLFTDNAVService"
+                },
+                {
+                  "key": "interface",
+                  "value": "WorkOrderUpdate_Out"
+                },
+                {
+                  "key": "interfaceNamespace",
+                  "value": "http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/"
+                }
+              ]
+            },
+            "description": "Sends a work order update (`WorkOrderUpdate_Out`) to SAP PI.\n\nSample payload: completed repair order 000049042283 (`PMACTTYPE` CME, `USERSTATUS` FINS, `ZZMOBILE_STATUS` COMP, catalog codes in `CATALOG_CODE_ACTUAL`). Contains a technician name. Expected: 200.",
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:sen=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header /><soapenv:Body><sen:FTD_INB_WORK_ORDER><IM_INB_ORDER><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><EQUIPMENT>TNTC-65010</EQUIPMENT><PMACTTYPE>CME</PMACTTYPE><ZZMATNR>TFCB</ZZMATNR><ZZEQUIPMENT></ZZEQUIPMENT><ZZCDE_CODE></ZZCDE_CODE><ZZIMEI_CON_DEV></ZZIMEI_CON_DEV><ZZSIM_MOBILE_NO></ZZSIM_MOBILE_NO><ZZSIM_ICCID></ZZSIM_ICCID><ZZSIM_PROVIDER></ZZSIM_PROVIDER><ZZCON_DEV_TYPE></ZZCON_DEV_TYPE><ZZSV_AMT>0.00</ZZSV_AMT><ZZSP_AMT>0.00</ZZSP_AMT><ZZUSIS_REASON></ZZUSIS_REASON><ZZUSIS_REA_TEXT></ZZUSIS_REA_TEXT><CLOSE_K2_TEXT></CLOSE_K2_TEXT><SYS_STATUS></SYS_STATUS><USERSTATUS>FINS</USERSTATUS><ZZMOBILE_STATUS>COMP</ZZMOBILE_STATUS><ZZRP_APPROVE></ZZRP_APPROVE><ZZCUS_NAME></ZZCUS_NAME><DISTANCE>0</DISTANCE><OPERATIONS><item><ORDERID>000049042283</ORDERID><ACTIVITY>0010</ACTIVITY><CONF_NO>0</CONF_NO><DESCRIPTION>เวลาปฏิบัติงาน</DESCRIPTION><CONTROL_KEY></CONTROL_KEY><WORK_CNTR>NCLV155</WORK_CNTR><PLANT>8006</PLANT><WORK_ACTUAL>253</WORK_ACTUAL><UN_WORK></UN_WORK><ACTTYPE>Y20001</ACTTYPE><ACT_START_DATE>2026-07-14</ACT_START_DATE><ACT_START_TIME>10:07:00</ACT_START_TIME><ACT_END_DATE>2026-07-14</ACT_END_DATE><ACT_END_TIME>14:20:00</ACT_END_TIME><WORKER><item><ORDERID>000049042283</ORDERID><ACTIVITY>0010</ACTIVITY><PERSONNEL_NUMBER>91670021</PERSONNEL_NUMBER><NAME>อรรคเดช นาราช</NAME></item></WORKER></item></OPERATIONS><COMPONENTS /><NOTIFICATION><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><NOTIF_CODEGROUP>TFCB</NOTIF_CODEGROUP><NOTIF_CODE>F036</NOTIF_CODE><NOTIF_CODE_TEXT>เครื่องทำงานตลอด-TFCB-F036</NOTIF_CODE_TEXT><EQUIPMENT_WORKABLE></EQUIPMENT_WORKABLE><CATALOG_CODE_ACTUAL><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><POSNR>10</POSNR><PROBLEM_CODEGROUP>TFCB</PROBLEM_CODEGROUP><PROBLEM_CODE>C901</PROBLEM_CODE><DAMAGE_CODEGROUP>TFCB</DAMAGE_CODEGROUP><DAMAGE_CODE>D203</DAMAGE_CODE><DAMAGE_TEXT>หลอดไฟโลโก้ดับ</DAMAGE_TEXT><CAUSE_CODEGROUP>TFCB</CAUSE_CODEGROUP><CAUSE_CODE>C202</CAUSE_CODE><CAUSE_TEXT>Ballast ชำรุด หลอดไฟไม่ติด</CAUSE_TEXT><ACTIVITY_CODEGROUP>TFCB</ACTIVITY_CODEGROUP><ACTIVITY_CODE>A203</ACTIVITY_CODE><ACTIVITY_TEXT>เปลี่ยนอะไหล่ (เบิกทดแทน)</ACTIVITY_TEXT></item></CATALOG_CODE_ACTUAL></NOTIFICATION><DOCUMENTS><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196352689059857.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196204429867260.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196357261597000.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196334272136845.jpg</DOC_URL></item></DOCUMENTS></IM_INB_ORDER></sen:FTD_INB_WORK_ORDER></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SAP to SIMS",
+      "description": "Inbound service orders from SAP PI to SIMS (`WorkOrderOutbound_Result`).",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "value": "{{simsUsername}}",
+            "type": "string"
+          },
+          {
+            "key": "password",
+            "value": "{{simsPassword}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Submit Service Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const type = (pm.response.text().match(/<TYPE[^>]*>([^<]*)<\\/TYPE>/) || [])[1];",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('TYPE is S', function () {",
+                  "    pm.expect(type).to.equal('S');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8"
+              },
+              {
+                "key": "X-DataArea-Id",
+                "value": "{{dataAreaId}}"
+              },
+              {
+                "key": "X-Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/sims-uat/api/v1/integrations/sap/service-orders",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "sims-uat",
+                "api",
+                "v1",
+                "integrations",
+                "sap",
+                "service-orders"
+              ]
+            },
+            "description": "Creates or updates service order `{{orderId}}` in SIMS UAT.\n\nExpected: 200 with `TYPE` = `S`.",
+            "body": {
+              "mode": "raw",
+              "raw": "<Soap:Envelope xmlns:Soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\n    <Soap:Body>\n        <WorkOrderOutbound_Result xmlns=\"urn:microsoft-dynamics-schemas/codeunit/SAPWSPI\">\n            <workOrderOutboundXML>\n                <ORDERID xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">{{orderId}}</ORDERID>\n                <TYPE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">S</TYPE>\n                <MESSAGE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\" />\n                <ZZNAV_NUMBER xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">NAV241228157</ZZNAV_NUMBER>\n                <ZZNAV_CRTD_DATE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">2025-01-20</ZZNAV_CRTD_DATE>\n                <ZZNAV_CRTD_TIME xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">195139</ZZNAV_CRTD_TIME>\n                <HEADER xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">\n                    <ORDERID>{{orderId}}</ORDERID>\n                    <CUSTOMER>0509595308</CUSTOMER>\n                    <NOTIF_NO>000032572225</NOTIF_NO>\n                    <ORDER_TYPE>ZC04</ORDER_TYPE>\n                    <AUARTTEXT>Placement Order</AUARTTEXT>\n                    <PLANPLANT>9317</PLANPLANT>\n                    <MN_WK_CTR>W33</MN_WK_CTR>\n                    <PLANT>9317</PLANT>\n                    <PMACTTYPE>PCC</PMACTTYPE>\n                    <ILATX>Placement Connectivity</ILATX>\n                    <PLANGROUP>033</PLANGROUP>\n                    <EQUIPMENT />\n                    <EQKTX />\n                    <INBDT />\n                    <CDECODE />\n                    <ASSEMBLY>000000000040000189</ASSEMBLY>\n                    <OBJECTTYPE>TCO</OBJECTTYPE>\n                    <MAINTPLANT />\n                    <PRODUCTION_START_DATE>2025-01-04</PRODUCTION_START_DATE>\n                    <PRODUCTION_FINISH_DATE>2025-01-04</PRODUCTION_FINISH_DATE>\n                    <PRODUCTION_START_TIME>00:00:00</PRODUCTION_START_TIME>\n                    <PRODUCTION_FINISH_TIME>00:00:00</PRODUCTION_FINISH_TIME>\n                    <USERSTATUS>EXSV INIT</USERSTATUS>\n                    <SHORT_TEXT>Install Cooler/5 - Develop Indirect Outl</SHORT_TEXT>\n                    <MATERIAL />\n                    <SERIALNO />\n                    <COMP_CODE>9190</COMP_CODE>\n                    <PROFIT_CTR>9190222002</PROFIT_CTR>\n                    <CO_AREA>TH00</CO_AREA>\n                    <RESPCCTR>9190222002</RESPCCTR>\n                    <WBS_ELEM />\n                    <PROJ_DEF />\n                    <LOC_COMP_CODE>9190</LOC_COMP_CODE>\n                    <LOC_CO_AREA>TH00</LOC_CO_AREA>\n                    <ASSET_NO />\n                    <SUB_NUMBER />\n                    <COSTCENTER />\n                    <SALESORG />\n                    <DISTR_CHAN />\n                    <DIVISION />\n                    <ACTUAL_START_DATE />\n                    <ACTUAL_FINISH_DATE />\n                    <ACTUAL_START_TIME>00:00:00</ACTUAL_START_TIME>\n                    <ACTUAL_FINISH_TIME>00:00:00</ACTUAL_FINISH_TIME>\n                    <REFDATE>2025-01-04</REFDATE>\n                    <SALES_ORD />\n                    <ENTERED_BY>PIUSER_HTTP</ENTERED_BY>\n                    <ENTER_DATE>2024-10-02</ENTER_DATE>\n                    <CHANGED_BY>64000952</CHANGED_BY>\n                    <CHANGE_DATE>2025-01-20</CHANGE_DATE>\n                    <SYS_STATUS>REL PRT MANC NMAT PRC</SYS_STATUS>\n                    <ROUTING_NO>1003998008</ROUTING_NO>\n                    <EQ_MODEL>COOLER SRCL400R with connectivity</EQ_MODEL>\n                    <SERVICE_TIME>0</SERVICE_TIME>\n                    <OPERATIONS>\n                        <ORDERID>{{orderId}}</ORDERID>\n                        <ACTIVITY>0010</ACTIVITY>\n                        <CONTROL_KEY>PM07</CONTROL_KEY>\n                        <WORK_CNTR>W33</WORK_CNTR>\n                        <PLANT>9317</PLANT>\n                        <DESCRIPTION>Install Cooler/5 - Develop Indirect Outl</DESCRIPTION>\n                        <NUMBER_OF_CAPACITIES>0</NUMBER_OF_CAPACITIES>\n                        <ACTTYPE />\n                        <DURATION_NORMAL>0.0</DURATION_NORMAL>\n                        <DURATION_NORMAL_UNIT>MIN</DURATION_NORMAL_UNIT>\n                        <WORK_ACTIVITY>0.0</WORK_ACTIVITY>\n                        <UN_WORK>MIN</UN_WORK>\n                        <CONF_NO>0023392001</CONF_NO>\n                        <WORK_ACTUAL>0.000</WORK_ACTUAL>\n                        <ACT_START_DATE />\n                        <ACT_START_TIME>00:00:00</ACT_START_TIME>\n                        <ACT_END_DATE />\n                        <ACT_END_TIME>00:00:00</ACT_END_TIME>\n                    </OPERATIONS>\n                    <COMPONENTS>\n                        <ORDERID />\n                        <RESERV_NO />\n                        <RES_ITEM />\n                        <MOVEMENT />\n                        <WITHDRAWN />\n                        <MATERIAL />\n                        <PLANT />\n                        <STGE_LOC />\n                        <BATCH />\n                        <GL_ACCOUNT />\n                        <ITEM_CAT />\n                        <ITEM_NUMBER />\n                        <ACTIVITY />\n                        <PRICE />\n                        <PRICE_UNIT />\n                        <PUR_GROUP />\n                        <MATL_GROUP />\n                        <MATL_DESC />\n                        <REQUIREMENT_QUANTITY />\n                        <REQUIREMENT_QUANTITY_UNIT />\n                        <REQ_DATE />\n                        <REQ_TIME />\n                        <MOVE_TYPE />\n                        <COMMITED_QUAN />\n                        <WARRANTY_CHECK />\n                    </COMPONENTS>\n                    <CUSTOMERS>\n                        <ORDERID>{{orderId}}</ORDERID>\n                        <CUSTOMER>0509595308</CUSTOMER>\n                        <CUST_NAME>TEST CUSTOMER</CUST_NAME>\n                        <BUILDING>1</BUILDING>\n                        <NAME_CO></NAME_CO>\n                        <STREET>TEST</STREET>\n                        <CITY1>บุรีรัมย์</CITY1>\n                        <CITY2>อำเภอประโคนชัย</CITY2>\n                        <REGION>04</REGION>\n                        <POST_CODE>31140</POST_CODE>\n                        <TEL_NUMBER>0000000000</TEL_NUMBER>\n                        <COUNTRY>THX</COUNTRY>\n                        <LOCATION_CODE />\n                        <TRADENAME>6999</TRADENAME>\n                        <TRADDESCP>T-Trade</TRADDESCP>\n                        <CUSTOMER_CLASS>C1</CUSTOMER_CLASS>\n                        <VTEXT>New</VTEXT>\n                        <KEYACCOUNT />\n                        <LONGITUDE>100.500000000000</LONGITUDE>\n                        <LATITUDE>13.750000000000</LATITUDE>\n                        <BRSCH>9305</BRSCH>\n                        <BRTXT></BRTXT>\n                        <MON_MOR_FROM>000000</MON_MOR_FROM>\n                        <MON_MOR_TO>000000</MON_MOR_TO>\n                        <MON_EVEN_FROM>000000</MON_EVEN_FROM>\n                        <MON_EVEN_TO>000000</MON_EVEN_TO>\n                        <TUE_MOR_FROM>000000</TUE_MOR_FROM>\n                        <TUE_MOR_TO>000000</TUE_MOR_TO>\n                        <TUE_EVEN_FROM>000000</TUE_EVEN_FROM>\n                        <TUE_EVEN_TO>000000</TUE_EVEN_TO>\n                        <WED_MOR_FROM>000000</WED_MOR_FROM>\n                        <WED_MOR_TO>000000</WED_MOR_TO>\n                        <WED_EVEN_FROM>000000</WED_EVEN_FROM>\n                        <WED_EVEN_TO>000000</WED_EVEN_TO>\n                        <THU_MOR_FROM>000000</THU_MOR_FROM>\n                        <THU_MOR_TO>000000</THU_MOR_TO>\n                        <THU_EVEN_FROM>000000</THU_EVEN_FROM>\n                        <THU_EVEN_TO>000000</THU_EVEN_TO>\n                        <FRI_MOR_FROM>000000</FRI_MOR_FROM>\n                        <FRI_MOR_TO>000000</FRI_MOR_TO>\n                        <FRI_EVEN_FROM>000000</FRI_EVEN_FROM>\n                        <FRI_EVEN_TO>000000</FRI_EVEN_TO>\n                        <SAT_MOR_FROM>000000</SAT_MOR_FROM>\n                        <SAT_MOR_TO>000000</SAT_MOR_TO>\n                        <SAT_EVEN_FROM>000000</SAT_EVEN_FROM>\n                        <SAT_EVEN_TO>000000</SAT_EVEN_TO>\n                        <SUN_MOR_FROM>000000</SUN_MOR_FROM>\n                        <SUN_MOR_TO>000000</SUN_MOR_TO>\n                        <SUN_EVEN_FROM>000000</SUN_EVEN_FROM>\n                        <SUN_EVEN_TO>000000</SUN_EVEN_TO>\n                    </CUSTOMERS>\n                    <NOTIFICATION>\n                        <NOTIFICATIONHEADER>\n                            <ORDERID>{{orderId}}</ORDERID>\n                            <NOTIF_TYPE>Z6</NOTIF_TYPE>\n                            <NOTIF_NO>000032572225</NOTIF_NO>\n                            <NOTIF_DATE>2024-09-19</NOTIF_DATE>\n                            <NOTIF_TIME>16:43:18</NOTIF_TIME>\n                            <NOTIF_INCIDENT>IN2410-00260</NOTIF_INCIDENT>\n                            <ZZRF_INCIDENT />\n                            <ZZPROJECT />\n                            <NOTIF_CODEGROUP>INSTALL1</NOTIF_CODEGROUP>\n                            <NOTIF_CODE>IN01</NOTIF_CODE>\n                            <NOTIF_CODE_TEXT>ติดตั้ง (OM ใหม่)</NOTIF_CODE_TEXT>\n                            <NOTIF_REPORT_BY>45090387</NOTIF_REPORT_BY>\n                            <NOTIF_LONGTEXT>Test work order</NOTIF_LONGTEXT>\n                            <ZZFIRST />\n                            <ZZFIRST_SET />\n                            <ZZPREFERDATE>2024-10-05</ZZPREFERDATE>\n                            <NOTIF_EQUIPMENT />\n                        </NOTIFICATIONHEADER>\n                        <FIRSTORDER>\n                            <NOTIF_NO />\n                            <ITEM_KEY />\n                            <MATERIAL />\n                            <DESCRIPT />\n                            <QUANTITY />\n                            <TEXT />\n                        </FIRSTORDER>\n                        <DOCUMENT>\n                            <NOTIF_NO>000032572225</NOTIF_NO>\n                            <DOC_TYPE>TDC</DOC_TYPE>\n                            <DOC_NO>0000000000000010005218821</DOC_NO>\n                            <DOC_URL>http://tpwk2app03/CAMAttachment/?fid=10540369</DOC_URL>\n                        </DOCUMENT>\n                        <CATALOGPROFILE>\n                            <NOTIF_NO />\n                            <PROBLEM_CODEGROUP />\n                            <PROBLEM_CODE />\n                            <DAMAGE_CODEGROUP />\n                            <DAMAGE_CODE />\n                            <DAMAGE_TEXT />\n                            <CAUSE_CODEGROUP />\n                            <CAUSE_CODE />\n                            <CAUSE_TEXT />\n                            <ACTIVITY_CODEGROUP />\n                            <ACTIVITY_CODE />\n                            <ACTIVITY_TEXT />\n                        </CATALOGPROFILE>\n                    </NOTIFICATION>\n                    <HISTORY>\n                        <HISTORYORDER>\n                            <ORDERID />\n                            <ORDERID_HISTORY />\n                            <CUSTOMER />\n                            <NOTIF_NO />\n                            <NOTIF_LONGTEXT />\n                            <ORDER_TYPE />\n                            <NOTIF_DATE />\n                            <NOTIF_TIME />\n                            <NOTIF_INCIDENT />\n                            <EQUIPMENT />\n                            <NOTIF_CODEGROUP />\n                            <NOTIF_CODE />\n                            <NOTIF_CODE_TEXT />\n                            <NOTIF_OBJPART_CODEGROUP />\n                            <NOTIF_OBJPART_CODE />\n                            <NOTIF_OBJPART_TEXT />\n                            <NOTIF_PROBLEM_CODEGROUP />\n                            <NOTIF_PROBLEM_CODEG />\n                            <NOTIF_PROBLEM_TEXT />\n                            <NOTIF_CAUSE_CODEGROUP />\n                            <NOTIF_CAUSE_CODE />\n                            <NOTIF_CAUSE_TEXT />\n                            <NOTIF_ACT_CODEGROUP />\n                            <NOTIF_ACT_CODE />\n                            <NOTIF_ACT_TEXT />\n                        </HISTORYORDER>\n                        <HISTORYSPAREPART>\n                            <ORDERID />\n                            <ORDERID_HISTORY />\n                            <MATERIAL />\n                            <MATL_DESC />\n                            <QUANTITY />\n                            <UNIT />\n                        </HISTORYSPAREPART>\n                    </HISTORY>\n                </HEADER>\n            </workOrderOutboundXML>\n        </WorkOrderOutbound_Result>\n    </Soap:Body>\n</Soap:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "https://bevprogateway.southeastasia.cloudapp.azure.com"
+    },
+    {
+      "key": "sapUsername",
+      "value": "SVC_NAV_01"
+    },
+    {
+      "key": "sapPassword",
+      "value": ""
+    },
+    {
+      "key": "simsUsername",
+      "value": "SVC_SAP_SIMS_UAT"
+    },
+    {
+      "key": "simsPassword",
+      "value": ""
+    },
+    {
+      "key": "dataAreaId",
+      "value": "BPA"
+    },
+    {
+      "key": "orderId",
+      "value": "000042544850"
+    }
+  ]
+}

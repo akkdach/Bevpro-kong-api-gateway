@@ -252,13 +252,70 @@
       ]
     },
     {
+      "type": "timeseries",
+      "title": "Request ทุกแอปรวมกัน ตามช่วงเวลา",
+      "description": "1 แท่ง = จำนวน request ทั้งหมดที่ผ่าน Kong ในช่วงนั้น — รวมทุกแอป ทุก status (รวม 401/404 และบอทสแกน) · ความกว้างแท่งปรับตามช่วงเวลาที่เลือก (ดูที่เวลาใน tooltip) · แท่งขวาสุดยังนับไม่ครบช่วง · legend: Total = รวมทั้งช่วงที่เลือก, Max = แท่งที่สูงสุด, Mean = เฉลี่ยต่อแท่ง",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "interval": "1m",
+      "maxDataPoints": 150,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum",
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time, $__interval), count(*) AS \"Request ทั้งหมด\" FROM kong_api_logs WHERE $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "2 · การใช้งานจริง — ใครเรียกอะไรบ้าง",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 14
       },
       "collapsed": false
     },
@@ -274,7 +331,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 7
+        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -311,7 +368,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 7
+        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -366,7 +423,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 15
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -451,7 +508,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 15
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -482,7 +539,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -537,7 +594,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "fieldConfig": {
         "defaults": {
@@ -622,7 +679,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 52
       },
       "panels": []
     },
@@ -638,7 +695,7 @@
         "h": 22,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "fieldConfig": {
         "defaults": {
@@ -797,7 +854,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 67
+        "y": 75
       },
       "collapsed": false
     },
@@ -813,7 +870,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 68
+        "y": 76
       },
       "fieldConfig": {
         "defaults": {
@@ -907,7 +964,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 68
+        "y": 76
       },
       "fieldConfig": {
         "defaults": {
@@ -939,7 +996,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 77
+        "y": 85
       },
       "fieldConfig": {
         "defaults": {
@@ -974,7 +1031,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 77
+        "y": 85
       },
       "fieldConfig": {
         "defaults": {
@@ -1003,7 +1060,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 85
+        "y": 93
       },
       "collapsed": false
     },
@@ -1019,7 +1076,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 86
+        "y": 94
       },
       "fieldConfig": {
         "defaults": {
@@ -1130,7 +1187,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 86
+        "y": 94
       },
       "targets": [
         {
@@ -1160,7 +1217,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 94
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1203,7 +1260,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 103
+        "y": 111
       },
       "targets": [
         {
@@ -1233,7 +1290,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 110
+        "y": 118
       },
       "targets": [
         {
@@ -1258,7 +1315,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 118
+        "y": 126
       },
       "collapsed": false
     },
@@ -1274,7 +1331,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 119
+        "y": 127
       },
       "fieldConfig": {
         "defaults": {
@@ -1306,7 +1363,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 119
+        "y": 127
       },
       "fieldConfig": {
         "defaults": {
@@ -1337,7 +1394,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 119
+        "y": 127
       },
       "fieldConfig": {
         "defaults": {
@@ -1369,7 +1426,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 119
+        "y": 127
       },
       "fieldConfig": {
         "defaults": {
@@ -1413,7 +1470,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 124
+        "y": 132
       },
       "fieldConfig": {
         "defaults": {
@@ -1523,7 +1580,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 124
+        "y": 132
       },
       "fieldConfig": {
         "defaults": {
@@ -1633,7 +1690,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 132
+        "y": 140
       },
       "fieldConfig": {
         "defaults": {
@@ -1700,7 +1757,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 148
       },
       "fieldConfig": {
         "defaults": {
@@ -1730,7 +1787,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 148
+        "y": 156
       },
       "collapsed": false
     },
@@ -1746,7 +1803,7 @@
         "h": 10,
         "w": 14,
         "x": 0,
-        "y": 149
+        "y": 157
       },
       "fieldConfig": {
         "defaults": {
@@ -1822,7 +1879,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 169
+        "y": 177
       },
       "fieldConfig": {
         "defaults": {
@@ -1873,7 +1930,7 @@
         "h": 5,
         "w": 5,
         "x": 14,
-        "y": 149
+        "y": 157
       },
       "fieldConfig": {
         "defaults": {
@@ -1926,7 +1983,7 @@
         "h": 5,
         "w": 5,
         "x": 19,
-        "y": 149
+        "y": 157
       },
       "fieldConfig": {
         "defaults": {
@@ -1979,7 +2036,7 @@
         "h": 10,
         "w": 14,
         "x": 0,
-        "y": 159
+        "y": 167
       },
       "fieldConfig": {
         "defaults": {
@@ -2012,7 +2069,7 @@
         "h": 10,
         "w": 10,
         "x": 14,
-        "y": 154
+        "y": 162
       },
       "fieldConfig": {
         "defaults": {
@@ -2038,7 +2095,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 178
+        "y": 186
       },
       "options": {
         "mode": "markdown",

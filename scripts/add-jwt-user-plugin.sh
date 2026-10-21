@@ -20,9 +20,18 @@
 #   - Kong proxy ตั้ง client_body_buffer_size 8k -> body ใหญ่กว่านั้น get_raw_body() คืน nil
 #     = upload รูป (median 778 KB) ไม่ถูกเก็บโดยอัตโนมัติ (ไม่งั้น disk โต 60 GB/สัปดาห์)
 #   - ตัดที่ 4 KB
+#   - ยกเว้นเส้น interface XML (เพิ่ม 2026-10-06): d365fo-soap, sap-pi-soap, sap-pi-test,
+#     sap-pi-uat-soap, sap-pi-prod-soap (เพิ่ม 2026-10-07),
+#     sims-uat-sap-service-orders และ path ที่มี /integrations/sap/ -> เก็บเต็มถึง 64 KB
+#     เหตุผล: ทีมขอดูไฟล์ XML interface ย้อนหลัง แต่ XML SAP -> SIMS เฉลี่ย 7 KB สูงสุด 14 KB
+#     ถูกตัดที่ 4 KB จนอ่านไม่ได้ · ต้องคู่กับ KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE=64k
+#     ใน docker-compose ไม่งั้น body เกิน 8 KB get_raw_body() คืน nil และไม่ถูกเก็บเลย
+#     XML มีข้อมูลลูกค้า (PII) -> ยังถูกล้างที่ 30 วันโดย purge-log-bodies.sh เหมือนเดิม
 #   - ⚠️ เส้น login ทุกแบบ (path มี /authen/ /auth/ หรือ login เช่น /Authen/token, /auth/azure-login)
 #     body = username+password หรือ token ของ Azure AD -> เก็บเป็น "[REDACTED login]" ทั้งก้อน
-#   - field ชื่อ password / pwd / passwd ทุก endpoint -> mask เป็น ***
+#   - field ชื่อ password / pwd / passwd ทุก endpoint -> mask เป็น *** (JSON, form และ XML element)
+#   - ⚠️ D365 ส่งรหัส SAP มาในเนื้อ XML (เจอ 2026-10-06): <resouceSap> = base64("URL|SVC_NAV_01|password")
+#     mask ด้านบนจับไม่ได้เพราะเป็น base64 -> ถอดแล้วเก็บแค่ "URL|***|***"
 #   - ครอบ pcall ทั้งส่วน: Lua พังตรงไหน request ยังผ่านปกติ (plugin นี้เป็น global)
 #   - ล้าง body ที่เก่ากว่า 30 วันด้วย scripts/purge-log-bodies.sh (cron รายวัน)
 # =====================================================
@@ -47,7 +56,8 @@ if auth then
   end
 end
 
--- ส่วนที่ 2: request body (redact login, mask password, cap 4 KB)
+-- ส่วนที่ 2: request body (redact login, mask password, cap 4 KB / interface XML 64 KB)
+local FULL_BODY = { ["d365fo-soap"] = true, ["sap-pi-soap"] = true, ["sap-pi-test"] = true, ["sap-pi-uat-soap"] = true, ["sap-pi-prod-soap"] = true, ["sims-uat-sap-service-orders"] = true }
 pcall(function()
   local m = kong.request.get_method()
   if m ~= "POST" and m ~= "PUT" and m ~= "PATCH" then return end
@@ -62,11 +72,26 @@ pcall(function()
   end
   local body = kong.request.get_raw_body()
   if not body or body == "" then return end
+  -- D365 -> fo-gateway: <resouceSap> = base64("URL|user|password") ของ SAP -> เก็บแค่ URL
+  body = body:gsub("(<resouceSap>)([^<]*)(</resouceSap>)", function(o, v, c)
+    local d = v
+    if not v:find("|", 1, true) then
+      local ok, dec = pcall(ngx.decode_base64, v)
+      if ok and dec and dec:find("|", 1, true) then d = dec end
+    end
+    local url = d:match("^([^|]*)|")
+    if url then return o .. url .. "|***|***" .. c end
+    return o .. v .. c
+  end)
   for _, k in ipairs({"password", "Password", "PASSWORD", "pwd", "Pwd", "passwd", "Passwd"}) do
     body = body:gsub("(\"" .. k .. "\"%s*:%s*\")[^\"]*", "%1***")
     body = body:gsub("(" .. k .. "=)[^&]*", "%1***")
+    body = body:gsub("(<[%w_:]*" .. k .. "[^>]*>)[^<]*", "%1***")
   end
-  if #body > 4096 then body = body:sub(1, 4096) .. "...[truncated]" end
+  local cap = 4096
+  local r = kong.router.get_route()
+  if (r and FULL_BODY[r.name]) or p:find("/integrations/sap/", 1, true) then cap = 65536 end
+  if #body > cap then body = body:sub(1, cap) .. "...[truncated]" end
   kong.log.set_serialize_value("request_body", body)
 end)'
 

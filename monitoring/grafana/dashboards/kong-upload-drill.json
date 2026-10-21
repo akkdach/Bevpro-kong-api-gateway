@@ -178,6 +178,73 @@
           "rawSql": "SELECT chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", count(*)::int AS \"กี่ครั้ง\", sum(coalesce(request_size, 0))::bigint AS \"อัปโหลดรวม\", sum(coalesce(response_size, 0))::bigint AS \"ดาวน์โหลดรวม\", (sum(coalesce(request_size, 0)) / greatest(count(*), 1))::bigint AS \"เฉลี่ย/ครั้ง\", count(*) FILTER (WHERE status_code >= 400)::int AS \"ล้มเหลว\", count(DISTINCT device_id)::int AS \"กี่เครื่อง\", to_char(max(request_time), 'DD Mon HH24:MI') AS \"ใช้ล่าสุด\" FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) GROUP BY 1 ORDER BY sum(coalesce(request_size, 0)) DESC"
         }
       ]
+    },
+    {
+      "type": "table",
+      "title": "รายคำขอ — ทีละ request (ล่าสุดก่อน, สูงสุด 10,000 แถว) — $path",
+      "description": "1 แถว = 1 request ในตาราง kong_api_logs · ขาขึ้น = request_size (ไฟล์ + multipart + header) · ขาลง = response_size · order_id / type_image แกะจาก query string ของ URL (/upload ส่งมาเป็น ?order_id=..&type_image=..) · คลิกหัวคอลัมน์ 'ขาขึ้น' เพื่อเรียงหาคำขอที่ใหญ่สุด · กดกรวยที่หัวคอลัมน์ไหนก็ได้ ติ๊กได้หลายค่า และกรองหลายคอลัมน์พร้อมกันได้ (ทุกเงื่อนไขต้องตรงพร้อมกัน) · ไม่เก็บ request header ของเส้นมือถือ (JWT มีรหัสผู้ใช้ใน claim email) — User-Agent มาจากคอลัมน์ user_agent ที่เก็บแยกไว้อยู่แล้ว",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 28 },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ขาขึ้น" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "min", "value": 0 },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+              { "id": "custom.width", "value": 190 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ขาลง" },
+            "properties": [{ "id": "unit", "value": "bytes" }, { "id": "custom.width", "value": 80 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "เวลาตอบ" },
+            "properties": [{ "id": "unit", "value": "ms" }, { "id": "custom.width", "value": 85 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "สถานะ" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 400 }] } },
+              { "id": "custom.width", "value": 85 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "เวลา" },
+            "properties": [{ "id": "custom.width", "value": 165 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "รหัสพนักงาน" },
+            "properties": [{ "id": "custom.width", "value": 135 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "order_id" },
+            "properties": [{ "id": "custom.width", "value": 150 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "type_image" },
+            "properties": [{ "id": "custom.width", "value": 270 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "path" },
+            "properties": [{ "id": "custom.width", "value": 190 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", chr(8203) || coalesce(jwt_user, 'ไม่ทราบ') AS \"รหัสพนักงาน\", substring(path from '[?&](?:order_id|orderId)=([^&]*)') AS \"order_id\", substring(path from '[?&]type_image=([^&]*)') AS \"type_image\", split_part(path, '?', 1) AS \"path\", status_code AS \"สถานะ\", coalesce(request_size, 0)::bigint AS \"ขาขึ้น\", coalesce(response_size, 0)::bigint AS \"ขาลง\", latency_ms AS \"เวลาตอบ\", split_part(path, '?', 2) AS \"query string\", user_agent AS \"User-Agent\", id FROM kong_api_logs WHERE $__timeFilter(request_time) AND regexp_replace(split_part(path, '?', 1), '/[0-9]+(/|$)', '/{id}\\1', 'g') IN ($path) ORDER BY request_time DESC LIMIT 10000"
+        }
+      ]
     }
   ]
 }

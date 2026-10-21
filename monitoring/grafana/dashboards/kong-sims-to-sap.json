@@ -1,0 +1,841 @@
+{
+  "uid": "kong-sims-to-sap",
+  "title": "SIMS → SAP (ขาไป ผ่าน Kong)",
+  "description": "SIMS ส่งข้อมูลเข้า SAP PI ผ่าน Kong route /sap-pi",
+  "tags": [
+    "kong",
+    "sims",
+    "sap",
+    "integration"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "scope",
+        "label": "แสดง",
+        "type": "custom",
+        "multi": false,
+        "includeAll": false,
+        "query": "ทั้งหมด : all,เฉพาะภายนอก (ซ่อนทีมเราและ bot) : external",
+        "current": {
+          "selected": true,
+          "text": "ทั้งหมด",
+          "value": "all"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "ทั้งหมด",
+            "value": "all"
+          },
+          {
+            "selected": false,
+            "text": "เฉพาะภายนอก (ซ่อนทีมเราและ bot)",
+            "value": "external"
+          }
+        ]
+      },
+      {
+        "name": "route",
+        "label": "Kong route",
+        "type": "custom",
+        "multi": true,
+        "includeAll": false,
+        "query": "sap-pi-uat-soap,sap-pi-prod-soap",
+        "current": {
+          "selected": true,
+          "text": [
+            "sap-pi-uat-soap"
+          ],
+          "value": [
+            "sap-pi-uat-soap"
+          ]
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "sap-pi-uat-soap",
+            "value": "sap-pi-uat-soap"
+          },
+          {
+            "selected": false,
+            "text": "sap-pi-prod-soap",
+            "value": "sap-pi-prod-soap"
+          }
+        ]
+      },
+      {
+        "name": "caller",
+        "label": "ผู้เรียก (IP)",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "konglogs"
+        },
+        "query": "SELECT DISTINCT client_ip FROM kong_api_logs WHERE route_name IN ('sap-pi-uat-soap','sap-pi-prod-soap') AND $__timeFilter(request_time) ORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all__'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### ขาไป: **SIMS → Kong → SAP PI**\nUAT: `/sap-pi-uat` (`sap-pi-uat-soap`) → **qbx** = SAP QAS · Prod: `/sap-pi-prod` (`sap-pi-prod-soap`) → **pbx** = SAP PRD (allow เฉพาะ IP ของ SIMS Prod) · เลือก route ด้านบนเพื่อดูแยก environment · `sap-pi-soap` = `/sap-pi` เดิม (ลบแล้ว 07/10 เหลือไว้ดูประวัติ)  \nusername/password ของ SAP ผู้เรียกส่งมาเอง Kong แค่ส่งต่อ · ตาราง **ผู้เรียก** ด้านล่างบอกว่าใครยิงมา (IP ที่ขึ้นว่า *ไม่รู้จัก* = ตรวจว่าเป็น SIMS แล้วเพิ่มชื่อใน dashboard)"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "ทั้งหมด",
+      "description": "จำนวน call ที่วิ่งผ่าน Kong ไป SAP ในช่วงเวลาที่เลือก",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "✅ สำเร็จ",
+      "description": "SAP ตอบ status ต่ำกว่า 400 = รับข้อมูลแล้ว",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) AND status_code < 400"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "🔑 SAP ไม่รับรหัส (401)",
+      "description": "ถึง SAP แล้ว แต่ username/password ผิด หรือ user ถูกล็อก — แก้ที่รหัส ไม่ใช่ network",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) AND status_code = 401"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "🚫 Kong บล็อก (403)",
+      "description": "ไม่ถึง SAP — IP ผู้เรียกไม่อยู่ใน allow list ของ route นั้น (prod เปิดเฉพาะ IP ของ SIMS Prod)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) AND status_code = 403"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "⚠️ SAP / เครือข่ายล่ม (5xx)",
+      "description": "502/503/504 = Kong ไปไม่ถึง SAP หรือ SAP ล่ม · 499 = ผู้เรียกตัดสายก่อนได้คำตอบ",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) AND (status_code >= 500 OR status_code = 499)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "สำเร็จล่าสุด",
+      "description": "เวลาที่ SAP รับข้อมูลสำเร็จครั้งล่าสุด (ในช่วงเวลาที่เลือก)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT (extract(epoch FROM max(request_time)) * 1000)::bigint AS v FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) AND status_code < 400"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "noValue": "ยังไม่เคยสำเร็จ",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "จำนวน call แยกตามผล",
+      "description": "ทุกแท่ง = จำนวน call ในช่วงนั้น แยกสีตามผลลัพธ์",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 15,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,$__interval), CASE WHEN status_code < 400 THEN 'สำเร็จ' WHEN status_code = 401 THEN 'SAP ไม่รับรหัส (401)' WHEN status_code = 403 THEN 'Kong บล็อก (403)' WHEN status_code >= 500 OR status_code = 499 THEN 'SAP / เครือข่ายล่ม (5xx)' ELSE 'อื่นๆ (4xx)' END AS metric, count(*) AS calls FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "เวลาตอบ (ms)",
+      "description": "latency รวมที่ผู้เรียกเห็น = เวลา SAP + Kong · เฉลี่ย และ สูงสุด ต่อช่วง",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 15,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,$__interval), avg(latency_ms) AS \"เฉลี่ย\", max(latency_ms) AS \"สูงสุด\" FROM kong_api_logs WHERE route_name IN ($route) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "always",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "ผู้เรียก — ใครยิงมาบ้าง (ทุก method)",
+      "description": "แยกตาม IP ต้นทาง · รวม request ที่ Kong ตอบ 404 เพราะไม่ตรง route (ผิด method / ผิด path) · ไว้ดูว่า SIMS เริ่มยิงจริงหรือยัง",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN user_agent ILIKE '%SAP%' THEN 'SAP PI (user agent)' WHEN client_ip LIKE '119.63.88.%' THEN 'เครือข่าย Thai Namthip' WHEN client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' THEN 'เทสบน VM Kong' WHEN client_ip = '20.44.247.33' THEN 'D365 F&O' WHEN client_ip IN ('4.144.150.30','4.144.150.42','4.144.150.51','4.144.150.52','4.144.150.54','4.144.150.57') THEN 'SIMS (App Service Sims)' WHEN client_ip IN ('20.33.118.76','10.0.0.4') THEN 'VM WebApplication (fo-gateway)' WHEN client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' THEN 'ออฟฟิศ Bevpro (เทส)' WHEN client_ip LIKE '147.92.179.%' THEN 'LINE link preview (bot)' WHEN client_ip LIKE '52.112.%' THEN 'Microsoft Teams preview (bot)' WHEN client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%' THEN 'Microsoft link scanner (bot)' ELSE 'ไม่รู้จัก — ตรวจว่าเป็น SIMS / SAP' END AS \"ผู้เรียก\", client_ip AS \"IP\", string_agg(DISTINCT method, ',') AS \"method\", count(*) AS \"ครั้ง\", count(*) FILTER (WHERE status_code < 400) AS \"สำเร็จ\", count(*) FILTER (WHERE status_code = 401) AS \"401 รหัสผิด\", count(*) FILTER (WHERE status_code = 403) AS \"403 Kong บล็อก\", count(*) FILTER (WHERE route_name IS NULL) AS \"404 ไม่ตรง route\", count(*) FILTER (WHERE status_code >= 500 OR status_code = 499) AS \"5xx\", max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE (route_name IN ($route) OR (route_name IS NULL AND (path LIKE '/sap-pi%' OR path LIKE '%XISOAPAdapter%'))) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY \"ล่าสุด\" DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "inspect": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Call ล่าสุด 200 รายการ (ทุก method)",
+      "description": "interface = ชื่อ interface ของ SAP PI จาก query string · SOAP = element แรกใน Body · route = (ไม่ตรง route — 404) คือ Kong ตอบเองเพราะผิด method หรือผิด path ไม่ถึง SAP",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", coalesce(route_name, '(ไม่ตรง route — 404)') AS \"route\", CASE WHEN user_agent ILIKE '%SAP%' THEN 'SAP PI (user agent)' WHEN client_ip LIKE '119.63.88.%' THEN 'เครือข่าย Thai Namthip' WHEN client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' THEN 'เทสบน VM Kong' WHEN client_ip = '20.44.247.33' THEN 'D365 F&O' WHEN client_ip IN ('4.144.150.30','4.144.150.42','4.144.150.51','4.144.150.52','4.144.150.54','4.144.150.57') THEN 'SIMS (App Service Sims)' WHEN client_ip IN ('20.33.118.76','10.0.0.4') THEN 'VM WebApplication (fo-gateway)' WHEN client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' THEN 'ออฟฟิศ Bevpro (เทส)' WHEN client_ip LIKE '147.92.179.%' THEN 'LINE link preview (bot)' WHEN client_ip LIKE '52.112.%' THEN 'Microsoft Teams preview (bot)' WHEN client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%' THEN 'Microsoft link scanner (bot)' ELSE 'ไม่รู้จัก — ตรวจว่าเป็น SIMS / SAP' END AS \"ผู้เรียก\", client_ip AS \"IP\", method AS \"method\", left(split_part(path, '?', 1), 60) AS \"path\", coalesce(substring(path from 'interface=([^&]+)'), '-') AS \"interface\", coalesce(substring(request_body from '<(?:[A-Za-z0-9_]+:)?Body[^>]*>\\s*<(?:[A-Za-z0-9_]+:)?([A-Za-z0-9_]+)'), '-') AS \"SOAP\", status_code AS \"status\", CASE WHEN response_body IS NULL THEN '-' WHEN response_body ~* '<(\\w+:)?faultstring' THEN substring(response_body from '(?i)<(?:\\w+:)?faultstring[^>]*>([^<]*)<') ELSE left(trim(regexp_replace(regexp_replace(regexp_replace(response_body, '<style.*</style>', '', 'is'), '<[^>]+>', ' ', 'g'), '(\\s|&nbsp;?)+', ' ', 'g')), 120) END AS \"SAP ตอบ\", latency_ms AS \"ms\", request_size AS \"ส่งไป (byte)\", response_size AS \"ได้กลับ (byte)\", request_id AS \"request_id\" FROM kong_api_logs WHERE (route_name IN ($route) OR (route_name IS NULL AND (path LIKE '/sap-pi%' OR path LIKE '%XISOAPAdapter%'))) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 200"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "inspect": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 400
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "ข้อมูลที่ส่งไป และที่ SAP ตอบกลับ 50 รายการล่าสุด (ทุก method)",
+      "description": "request body = เนื้อ SOAP ที่ผู้เรียกส่ง · response body = สิ่งที่ SAP ตอบ (SOAP fault / หน้า error บอกสาเหตุ) · request headers = header ที่ผู้เรียกส่งมา (Content-Type, SOAPAction, Host) · authorization = ใครยิง: user=ชื่อบัญชี pass_len=ความยาวรหัส (ไม่เก็บตัวรหัส) · response headers = header ขากลับ (Server = ใครตอบ, X-Kong-Upstream-Latency มีค่า = ถึง SAP แล้ว, WWW-Authenticate) · request ที่ไม่ตรง route (404) ไม่มี response จาก SAP · เก็บ response ตั้งแต่ 2026-10-07 15:50 · header ตั้งแต่ 2026-10-14 · Kong เก็บไม่เกิน 64 KB ล้างทิ้งเมื่อเกิน 30 วัน · กดที่ช่อง (Inspect value) เพื่อดูเต็ม",
+      "datasource": {
+        "type": "postgres",
+        "uid": "konglogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", CASE WHEN user_agent ILIKE '%SAP%' THEN 'SAP PI (user agent)' WHEN client_ip LIKE '119.63.88.%' THEN 'เครือข่าย Thai Namthip' WHEN client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' THEN 'เทสบน VM Kong' WHEN client_ip = '20.44.247.33' THEN 'D365 F&O' WHEN client_ip IN ('4.144.150.30','4.144.150.42','4.144.150.51','4.144.150.52','4.144.150.54','4.144.150.57') THEN 'SIMS (App Service Sims)' WHEN client_ip IN ('20.33.118.76','10.0.0.4') THEN 'VM WebApplication (fo-gateway)' WHEN client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' THEN 'ออฟฟิศ Bevpro (เทส)' WHEN client_ip LIKE '147.92.179.%' THEN 'LINE link preview (bot)' WHEN client_ip LIKE '52.112.%' THEN 'Microsoft Teams preview (bot)' WHEN client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%' THEN 'Microsoft link scanner (bot)' ELSE 'ไม่รู้จัก — ตรวจว่าเป็น SIMS / SAP' END AS \"ผู้เรียก\", client_ip AS \"IP\", method AS \"method\", coalesce(route_name, '(ไม่ตรง route — 404)') AS \"route\", status_code AS \"status\", CASE WHEN response_body IS NULL THEN '-' WHEN response_body ~* '<(\\w+:)?faultstring' THEN substring(response_body from '(?i)<(?:\\w+:)?faultstring[^>]*>([^<]*)<') ELSE left(trim(regexp_replace(regexp_replace(regexp_replace(response_body, '<style.*</style>', '', 'is'), '<[^>]+>', ' ', 'g'), '(\\s|&nbsp;?)+', ' ', 'g')), 120) END AS \"SAP ตอบ\", (SELECT string_agg(key || ': ' || value, E'\\n' ORDER BY key) FROM jsonb_each_text(request_headers)) AS \"request headers\", request_body AS \"request body\", (SELECT string_agg(key || ': ' || value, E'\\n' ORDER BY key) FROM jsonb_each_text(response_headers)) AS \"response headers\", response_body AS \"response body\" FROM kong_api_logs WHERE (route_name IN ($route) OR (route_name IS NULL AND (path LIKE '/sap-pi%' OR path LIKE '%XISOAPAdapter%'))) AND ('__all__' IN ($caller) OR client_ip IN ($caller)) AND ('$scope' = 'all' OR NOT (client_ip = '127.0.0.1' OR client_ip ~ '^172\\.(1[6-9]|2[0-9]|3[01])\\.' OR client_ip LIKE '124.120.%' OR client_ip LIKE '124.122.%' OR client_ip LIKE '87.124.104.%' OR client_ip = '171.103.89.247' OR client_ip LIKE '147.92.179.%' OR client_ip LIKE '52.112.%' OR client_ip LIKE '104.47.%' OR client_ip LIKE '57.155.%')) AND $__timeFilter(request_time) ORDER BY request_time DESC LIMIT 50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "inspect": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 400
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "request body"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 900
+              },
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "response body"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 900
+              },
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "request headers"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 450
+              },
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "response headers"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 450
+              },
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 13,
+      "type": "text",
+      "title": "อ่านผลยังไง",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "| status | ความหมาย | แก้ที่ |\n|---|---|---|\n| **2xx** | SAP รับข้อมูลแล้ว | — |\n| **401** | ถึง SAP แล้ว แต่ username/password ไม่ผ่าน หรือ user ถูกล็อก | ขอรหัสที่ถูกจาก Thai Namthip — **อย่าลองซ้ำหลายครั้ง** user อาจโดนล็อก |\n| **403** | Kong ไม่ปล่อยผ่าน: IP ไม่อยู่ใน allow list ของ route นั้น | UAT: `fix-my-ip.ps1 -IncludeKong` · Prod: `SIMS_PROD_IPS=... add-sap-pi-env-routes.sh` |\n| **404** | path / interface ผิด | ตรวจ URL และ query string |\n| **502/503/504** | Kong ไปไม่ถึง SAP หรือ SAP ล่ม | ตรวจกับ Thai Namthip |\n| **499** | ผู้เรียกตัดสายก่อนได้คำตอบ (timeout ฝั่งผู้เรียก) | เพิ่ม timeout ผู้เรียก |"
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "SAP → SIMS",
+      "type": "link",
+      "url": "/grafana/d/kong-sap-to-sims",
+      "icon": "dashboard",
+      "keepTime": true
+    }
+  ]
+}

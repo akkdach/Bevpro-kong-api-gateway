@@ -46,8 +46,8 @@ const INSERT_SQL = `
   INSERT INTO kong_api_logs
     (request_id, client_ip, method, path, status_code, latency_ms,
      consumer_username, user_agent, device_id, jwt_user, app_name, request_body, request_size, response_size,
-     service_name, route_name, request_time)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     service_name, route_name, request_time, response_body, request_headers, response_headers)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
   ON CONFLICT (request_id) DO NOTHING
 `;
 
@@ -70,7 +70,47 @@ function toParams(item) {
     item.service_name,
     item.route_name,
     item.request_time,
+    item.response_body,
+    item.request_headers,
+    item.response_headers,
   ];
+}
+
+// ─── Header ของเส้น interface ─────────────────────
+// เก็บเฉพาะเส้น interface SAP/SIMS/D365 (กติกาเดียวกับ body 64 KB) ~100 แถว/วัน
+// ไม่เก็บของแอปมือถือ (~130k แถว/วัน) — ใหญ่เกินและไม่ได้ใช้ debug
+// ไว้ดูว่าผู้เรียกส่ง Content-Type / SOAPAction / Host อะไรมา และใครตอบกลับ (Server, X-Kong-Upstream-Latency, WWW-Authenticate)
+const INTERFACE_ROUTES = new Set(["sims-uat-sap-service-orders", "d365fo-soap"]);
+function isInterface(log) {
+  const route = log.route?.name || "";
+  const path = log.request?.uri || "";
+  return (
+    route.startsWith("sap-pi") ||
+    INTERFACE_ROUTES.has(route) ||
+    path.startsWith("/sap-pi") ||
+    path.includes("/integrations/sap/")
+  );
+}
+
+// เก็บค่า header ตามที่ผู้เรียกส่งมา (เจ้าของระบบตัดสินใจ 2026-10-14) — ยกเว้น Authorization:
+//   ไม่เก็บรหัสเด็ดขาด · แสดงเป็น auth_info จาก post-function ของ 3 route interface (scripts/add-response-body-capture.sh)
+//   เช่น "Basic user=SVC_SAP_SIMS_UAT pass_len=40 b64_len=76" = ดูได้ว่าใครยิง + รหัสถูกตัดไหม · ไม่มี auth_info = "[REDACTED]"
+//   header ชื่อแปลกไม่มีค่า = ท่อนท้ายของ Authorization ที่ SAP PI ตัดบรรทัดทุก 76 ตัว (เก็บตามที่ส่งมา)
+//   ห้ามขยาย isInterface() ไปเส้นแอปมือถือ (JWT มีรหัสผู้ใช้ใน claim email)
+// ค่าแต่ละตัวตัดที่ 500 ตัวอักษร · ไม่เกิน 60 header — ตัดทีละค่าแทนการตัดทั้งก้อน JSON จะได้ยังเป็น JSON ที่ถูกเสมอ (คอลัมน์ jsonb)
+const AUTH_HEADER = /^(authorization|proxy-authorization)$/i;
+function safeHeaders(headers, authInfo) {
+  if (!headers || typeof headers !== "object") return null;
+  const out = {};
+  for (const [name, value] of Object.entries(headers).slice(0, 60)) {
+    if (AUTH_HEADER.test(name)) {
+      out[clean(name, 100)] = clean(authInfo, 200) || "[REDACTED]";
+      continue;
+    }
+    const text = Array.isArray(value) ? value.join(", ") : String(value);
+    out[clean(name, 100)] = clean(text, 500);
+  }
+  return JSON.stringify(out);
 }
 
 // ─── ดึงชื่อผู้ใช้จาก JWT ──────────────────────────
@@ -112,6 +152,7 @@ function clean(value, maxLen) {
 // ─── Parse Kong Log Entry ─────────────────────────
 function parseKongLog(log) {
   try {
+    const keepHeaders = isInterface(log);
     return {
       request_id: clean(
         log.request?.headers?.["kong-request-id"] ||
@@ -146,9 +187,18 @@ function parseKongLog(log) {
       // แอปไหนยิงมา — frontend แต่ละตัวใส่ header X-App-Name ที่ api client กลาง
       // (consumer/JWT แยกไม่ได้เพราะทุกแอปใช้ token ชุดเดียวกัน) — แอปเก่าที่ยังไม่ใส่ = NULL
       app_name: clean(log.request?.headers?.["x-app-name"] || null, 100),
-      // body มาจาก pre-function ของ Kong (field request_body) — redact/mask/ตัด 4 KB แล้วที่ Kong
-      // ดู scripts/add-jwt-user-plugin.sh · http-log เองไม่ส่ง body · null = ไม่ใช่ JSON/form หรือ > 8 KB
-      request_body: clean(log.request_body || null, 4200),
+      // body มาจาก pre-function ของ Kong (field request_body) — redact/mask/ตัดแล้วที่ Kong
+      // (4 KB ทั่วไป · 64 KB เส้น interface XML) ดู scripts/add-jwt-user-plugin.sh
+      // http-log เองไม่ส่ง body · null = ไม่ใช่ JSON/form/text หรือใหญ่เกิน client_body_buffer_size (64k)
+      // 66000 = เผื่อ 64 KB + "...[truncated]" — เดิม 4200 ทำให้ XML interface โดนตัดซ้ำที่ชั้นนี้
+      request_body: clean(log.request_body || null, 66000),
+      // response body มาจาก post-function ของ Kong (field response_body) — เฉพาะเส้น interface SAP
+      // (sims-uat-sap-service-orders, sap-pi-soap) ตัดที่ 64 KB · ดู scripts/add-response-body-capture.sh
+      // SIMS ตอบ 200 เสมอแล้วบอกผลจริงใน <TYPE> (S/E) — ไม่มีคอลัมน์นี้จะแยกไม่ออกว่าใบงานเข้าจริงไหม
+      response_body: clean(log.response_body || null, 66000),
+      // header ขาเข้า/ขาออก เฉพาะเส้น interface (ดู isInterface / safeHeaders ด้านบน) · ล้างพร้อม body ที่ 30 วัน
+      request_headers: keepHeaders ? safeHeaders(log.request?.headers, log.auth_info) : null,
+      response_headers: keepHeaders ? safeHeaders(log.response?.headers) : null,
       // ปริมาณข้อมูลขาเข้า/ขาออก — ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL 4.2)
       // Kong ส่ง request.size มาให้อยู่แล้ว แต่เดิมเก็บแค่ response.size
       request_size: log.request?.size || 0,

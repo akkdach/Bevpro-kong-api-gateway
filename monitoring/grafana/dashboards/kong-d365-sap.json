@@ -1,0 +1,295 @@
+{
+  "uid": "kong-d365-sap",
+  "title": "Kong — D365 ↔ SAP Integration",
+  "tags": ["kong", "d365", "sap", "integration"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "ขาเข้า /d365fo — สำเร็จ",
+      "description": "D365 เรียก fo-gateway ผ่าน Kong แล้วได้ status ต่ำกว่า 400",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS ok FROM kong_api_logs WHERE route_name = 'd365fo-soap' AND status_code < 400 AND $__timeFilter(request_time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "ขาเข้า /d365fo — error",
+      "description": "status 400 ขึ้นไป ถ้าตัวเลขนี้ขึ้นแปลว่า D365 หรือ fo-gateway มีปัญหา",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS errors FROM kong_api_logs WHERE route_name = 'd365fo-soap' AND status_code >= 400 AND $__timeFilter(request_time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "ขาออก /sap-pi — สำเร็จ",
+      "description": "ยิงเข้า SAP PI ของ Thai Namthip แล้วผ่าน (ต่ำกว่า 400)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS ok FROM kong_api_logs WHERE route_name = 'sap-pi-soap' AND status_code < 400 AND $__timeFilter(request_time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "ขาออก /sap-pi — 401 auth ไม่ผ่าน",
+      "description": "SAP ปฏิเสธ credential ของ SVC_NAV_01 ถ้าค่านี้ขึ้นต้องคุยกับ Thai Namthip",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS unauthorized FROM kong_api_logs WHERE route_name = 'sap-pi-soap' AND status_code = 401 AND $__timeFilter(request_time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Requests/sec แยก route (live จาก Prometheus)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (rate(kong_http_requests_total{route=~\"d365fo-soap|sap-pi-soap\"}[5m]))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Requests/sec แยก status code",
+      "description": "401 = SAP ปฏิเสธ credential · 403 = โดน ip-restriction ของเรา · 504 = ไปไม่ถึงปลายทาง",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, code) (rate(kong_http_requests_total{route=~\"d365fo-soap|sap-pi-soap\"}[5m]))",
+          "legendFormat": "{{route}} · {{code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "จำนวน request ต่อ 5 นาที (จาก log)",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 11 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(request_time,'5m'), route_name AS metric, count(*) AS requests FROM kong_api_logs WHERE route_name IN ('d365fo-soap','sap-pi-soap') AND $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "always" } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Latency ของ upstream (p95)",
+      "description": "เวลาที่ fo-gateway หรือ SAP PI ใช้ตอบกลับ ไม่รวมเวลาของ Kong เอง",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 11 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(kong_upstream_latency_ms_bucket{route=~\"d365fo-soap|sap-pi-soap\"}[5m])))",
+          "legendFormat": "{{route}} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "auto" } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Request ล่าสุด 100 รายการ",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT request_time AS \"เวลา\", route_name AS \"route\", method, path, status_code AS \"status\", latency_ms AS \"ms\", client_ip AS \"จาก IP\", coalesce(app_name,'-') AS \"app\" FROM kong_api_logs WHERE route_name IN ('d365fo-soap','sap-pi-soap') AND $__timeFilter(request_time) ORDER BY id DESC LIMIT 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-background", "mode": "gradient" }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 400 },
+                    { "color": "red", "value": 500 }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [] }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "สรุปตาม route และ status",
+      "datasource": { "type": "postgres", "uid": "konglogs" },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT route_name AS \"route\", status_code AS \"status\", count(*) AS \"ครั้ง\", round(avg(latency_ms)) AS \"เฉลี่ย ms\", max(request_time) AS \"ล่าสุด\" FROM kong_api_logs WHERE route_name IN ('d365fo-soap','sap-pi-soap') AND $__timeFilter(request_time) GROUP BY 1, 2 ORDER BY 1, 2"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "options": { "showHeader": true, "sortBy": [] }
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "อ่าน status code ยังไง",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "options": {
+        "mode": "markdown",
+        "content": "| status | ใครเป็นคนตอบ | แปลว่า | ทำอะไรต่อ |\n|---|---|---|---|\n| **200** | fo-gateway หรือ SAP PI | สำเร็จ | ไม่ต้องทำอะไร |\n| **401** `sap-pi-soap` | SAP NetWeaver | credential ของ `SVC_NAV_01` ไม่ผ่าน | ขอให้ Thai Namthip เช็คว่าบัญชีถูกล็อกหรือรหัสเปลี่ยน |\n| **403** `sap-pi-soap` | Kong | ผู้เรียกไม่อยู่ใน allow list ของ ip-restriction | เพิ่ม IP ใน `scripts/add-sap-egress-route.sh` แล้วรันซ้ำ |\n| **426** | Kong | ยิงมาด้วย http ทั้งที่ route รับเฉพาะ https | แก้ URL ฝั่งผู้เรียกเป็น https |\n| **499** | Kong | ผู้เรียกตัดการเชื่อมต่อก่อนได้คำตอบ | ปกติคือ timeout ฝั่งผู้เรียกสั้นเกินไป |\n| **500** | fo-gateway หรือ SAP PI | ปลายทางรับแล้วแต่ประมวลผลไม่ผ่าน | ให้ Thai Namthip เปิด Message Monitor ดู หรือดู log ของ IIS |\n| **504** | Kong | ปลายทางไม่ตอบใน 10 วินาที | เช็คว่า firewall ฝั่งปลายทางยังเปิดให้ `20.6.32.81` อยู่ไหม |\n\n**เส้นทางที่ dashboard นี้เฝ้าอยู่**\n\n- ขาเข้า `d365fo-soap` : D365 F&O → Kong → `fo-gateway.bevproasia.com/D365FoService.svc` (IIS บน VM WebApplication)\n- ขาออก `sap-pi-soap` : ผู้เรียก → Kong → `qbx.thainamthip.co.th:8100/XISOAPAdapter/MessageServlet` (SAP PI ของ Thai Namthip)\n\nสคริปต์ที่สร้าง 2 route นี้: `scripts/add-d365fo-route.sh` และ `scripts/add-sap-egress-route.sh`"
+      }
+    }
+  ]
+}

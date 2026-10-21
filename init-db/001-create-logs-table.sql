@@ -21,6 +21,14 @@ CREATE TABLE IF NOT EXISTS kong_api_logs (
     -- ตารางเดิมบน VM เพิ่มด้วย: ALTER TABLE kong_api_logs ADD COLUMN IF NOT EXISTS app_name VARCHAR(100);
     app_name            VARCHAR(100),
     request_body        TEXT,
+    -- response body เฉพาะเส้น interface SAP (scripts/add-response-body-capture.sh) · ล้างที่ 30 วัน
+    -- ตารางเดิมบน VM เพิ่มด้วย: ALTER TABLE kong_api_logs ADD COLUMN IF NOT EXISTS response_body TEXT;
+    response_body       TEXT,
+    -- header ขาเข้า/ขาออก (JSON) เฉพาะเส้น interface SAP/SIMS/D365 — log-receiver/server.js isInterface()
+    -- เก็บค่าตามที่ส่งมา ยกเว้น authorization = "Basic user=.. pass_len=.." (ไม่มีรหัส) · ล้างที่ 30 วันพร้อม body (scripts/purge-log-bodies.sh)
+    -- ตารางเดิมบน VM เพิ่มด้วย: ALTER TABLE kong_api_logs ADD COLUMN IF NOT EXISTS request_headers JSONB, ADD COLUMN IF NOT EXISTS response_headers JSONB;
+    request_headers     JSONB,
+    response_headers    JSONB,
     -- ปริมาณข้อมูลเข้า/ออก ใช้คิดโควตาอินเทอร์เน็ตรายเครื่อง (PROPOSAL ข้อ 4.2)
     request_size        INT,
     response_size       INT,

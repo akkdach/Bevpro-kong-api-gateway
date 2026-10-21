@@ -19,6 +19,10 @@ services:
     environment:
       KONG_NGINX_WORKER_PROCESSES: "2"   # fix เท่าจำนวน core (กัน resize VM แล้ว auto เปิด worker เพิ่มจนกิน RAM)
       KONG_MEM_CACHE_SIZE: "128m"
+      # body เล็กกว่านี้อยู่ใน RAM -> pre-function อ่านเก็บลง log ได้ (default 8k)
+      # XML SAP -> SIMS เฉลี่ย 7 KB สูงสุด 14 KB (วัด 2026-10-06) ที่ 8k ใบใหญ่ไม่ถูกเก็บเลย
+      # upload รูป (median 778 KB) ยังเกิน 64k -> ไม่ถูกเก็บเหมือนเดิม (กัน disk โต)
+      KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE: "64k"
     deploy:
       resources:
         limits:

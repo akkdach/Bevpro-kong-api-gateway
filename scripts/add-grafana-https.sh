@@ -36,11 +36,13 @@ for p in json.load(sys.stdin)['data']:
 ")
 if [ -n "$EXISTING" ]; then
   curl -s -o /dev/null -w "  อัปเดตตัวเดิม -> %{http_code}\n" -X PATCH "$ADMIN/plugins/$EXISTING" \
-    --data "config.allow[]=171.103.89.247" --data "config.allow[]=87.124.104.34"
+    --data "config.allow[]=171.103.89.247" --data "config.allow[]=87.124.104.32/29" \
+    --data "config.allow[]=124.120.28.131" --data "config.allow[]=124.120.31.223" --data "config.allow[]=124.122.190.153"
 else
   curl -s -o /dev/null -w "  สร้างใหม่ -> %{http_code}\n" -X POST "$ADMIN/routes/grafana-admin/plugins" \
     --data "name=ip-restriction" \
-    --data "config.allow[]=171.103.89.247" --data "config.allow[]=87.124.104.34"
+    --data "config.allow[]=171.103.89.247" --data "config.allow[]=87.124.104.32/29" \
+    --data "config.allow[]=124.120.28.131" --data "config.allow[]=124.120.31.223" --data "config.allow[]=124.122.190.153"
 fi
 
 echo "done — เปิด https://bevprogateway.southeastasia.cloudapp.azure.com/grafana"

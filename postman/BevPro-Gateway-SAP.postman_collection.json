@@ -1,0 +1,181 @@
+{
+  "info": {
+    "_postman_id": "30b6c092-1102-4f12-a8a1-ebf6fb09ed8e",
+    "name": "BevPro Gateway — ขาส่งไป SAP",
+    "description": "ทดสอบเส้น **D365 → BevPro Gateway (Kong) → SAP PI ของ Thai Namthip** (interface `WorkOrderUpdate_Out`)\n\n## ก่อนใช้ — ใส่ค่า 3 ตัวนี้ในแท็บ Variables ช่อง **Current value** เท่านั้น\n\n| ตัวแปร | ค่า | ขอจากใคร |\n|---|---|---|\n| `apikey` | API key ของ consumer `sap-tester` | แผนก IT (ดูบน VM: `curl -s localhost:8001/consumers/sap-tester/key-auth`) |\n| `sap_password` | รหัสของ `SVC_NAV_01` | Thai Namthip / ช่อง Password ในหน้า Client configuration parameters ของ D365 |\n| `gw_password` | รหัสของ user `fando` (gateway) | ช่อง Password ใต้ WORK ORDER INBOUND SAP (GATEWAY) ใน D365 |\n\n**ห้ามใส่รหัสในช่อง Initial value** — ช่องนั้นจะติดไปกับไฟล์ตอน export/แชร์\n\n## เส้นทาง\n\n```\nD365 F&O ──► Kong /d365fo ──► fo-gateway (IIS) ──► Kong /sap-pi ──► SAP PI qbx.thainamthip.co.th:8100\n                                                    (กัน IP)\nPostman ─────────────────────────────────────────► Kong /sap-pi-test ──► SAP PI   (กัน API key — ใช้จากเน็ตไหนก็ได้)\n```\n\n## อ่านผล\n\n| status | ใครตอบ | แปลว่า |\n|---|---|---|\n| 200 / 500 + XML ของ SAP | SAP PI | **ผ่าน** — 500 ปกติถ้า XML ไม่ใช่ใบงานจริง (PI แปลงข้อมูลไม่ได้) แต่ยืนยันว่า login ผ่านแล้ว |\n| 401 + หน้า HTML `SAP NetWeaver` | SAP PI | ไปถึง SAP แล้ว แต่ user/password ไม่ผ่าน หรือบัญชีถูกล็อก |\n| 401 + JSON `No API key` / `Invalid authentication` | Kong | ลืมใส่ / ใส่ apikey ผิด |\n| 403 `IP address not allowed` | Kong | ยิงผิดเส้น ไปโดน `/sap-pi` ที่กันด้วย IP |\n| 504 | Kong | SAP ไม่ตอบใน 10 วิ (firewall ฝั่ง Thai Namthip / SAP ล่ม) |\n\n⚠️ บัญชี SAP ล็อกเมื่อใส่รหัสผิดหลายครั้ง (ปกติ 5) — ถ้าได้ 401 จาก SAP อย่ากดซ้ำรัวๆ ให้ Thai Namthip เช็คสถานะบัญชีก่อน\n\nไฟล์นี้ไม่มีรหัสใดๆ อยู่ข้างใน แชร์ได้",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gateway", "value": "https://bevprogateway.southeastasia.cloudapp.azure.com", "type": "string" },
+    { "key": "sap_path", "value": "/XISOAPAdapter/MessageServlet", "type": "string" },
+    { "key": "sap_query", "value": "senderService=sys_TNTLFTDNAVService&interface=WorkOrderUpdate_Out&interfaceNamespace=http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/", "type": "string" },
+    { "key": "sap_user", "value": "SVC_NAV_01", "type": "string" },
+    { "key": "sap_password", "value": "", "type": "secret" },
+    { "key": "apikey", "value": "", "type": "secret" },
+    { "key": "gw_user", "value": "fando", "type": "string" },
+    { "key": "gw_password", "value": "", "type": "secret" },
+    { "key": "sap_xml", "value": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header/><soapenv:Body><ConnectivityTest xmlns=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\">postman-test</ConnectivityTest></soapenv:Body></soapenv:Envelope>", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "00 เช็คการเชื่อมต่อ (ไม่ใช้รหัส SAP)",
+      "description": "รันก่อนทุกครั้ง ไม่ส่งรหัส SAP จึงไม่เสี่ยงทำให้บัญชีถูกล็อก",
+      "item": [
+        {
+          "name": "1. Gateway ตอบไหม (TestConnect)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('gateway ตอบ Status=true', () => pm.expect(pm.response.text()).to.include('<a:Status>true</a:Status>'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction", "value": "\"http://tempuri.org/ID365FoService/TestConnect\"" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <s:Body>\n    <TestConnect xmlns=\"http://tempuri.org/\">\n      <InputText>postman-check</InputText>\n    </TestConnect>\n  </s:Body>\n</s:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": "{{gateway}}/d365fo/D365FoService.svc",
+            "description": "ยิงเข้า fo-gateway ผ่าน Kong ด้วย operation `TestConnect` (ไม่เขียนข้อมูล)\n\nผลที่ถูก: 200 และ `<a:Status>true</a:Status>`"
+          }
+        },
+        {
+          "name": "2. Kong ไปถึง SAP ไหม (ไม่ส่งรหัส)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('ผ่าน Kong แล้ว (ไม่ใช่ error ของ Kong)', () => pm.expect(body).to.not.match(/No API key|Invalid authentication|IP address not allowed/));",
+                  "pm.test('SAP ตอบเอง (หน้า NetWeaver) = ถึง SAP แล้ว', () => pm.expect(body).to.include('NetWeaver'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "apikey", "value": "{{apikey}}" }
+            ],
+            "url": "{{gateway}}/sap-pi-test{{sap_path}}?{{sap_query}}",
+            "description": "ส่งแค่ apikey ไม่ส่งรหัส SAP\n\nผลที่ถูก: **401 + หน้า HTML `SAP NetWeaver`** = Kong ส่งถึง SAP แล้ว SAP แค่ขอรหัส\n\nถ้าได้ 401 แบบ JSON `No API key` = ยังไม่ได้ใส่ `apikey`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 ขาส่งไป SAP — ยิงตรงเข้า SAP PI ผ่าน Kong",
+      "description": "จำลองสิ่งที่ fo-gateway ทำ: POST XML เข้า SAP PI พร้อม Basic auth ของ `SVC_NAV_01`\n\nใช้ทางเทส `/sap-pi-test` (กันด้วย apikey) จึงยิงจากเน็ตไหนก็ได้",
+      "item": [
+        {
+          "name": "3. ส่ง XML เข้า SAP (WorkOrderUpdate_Out)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('ไม่ติดที่ Kong', () => pm.expect(body).to.not.match(/No API key|Invalid authentication|IP address not allowed/));",
+                  "pm.test('SAP รับ login แล้ว (ไม่ใช่ 401)', () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "if (pm.response.code === 401) { console.warn('SAP ปฏิเสธ SVC_NAV_01 — อย่ากดซ้ำ ให้ Thai Namthip เช็คว่าบัญชีถูกล็อกไหม'); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{sap_user}}", "type": "string" },
+                { "key": "password", "value": "{{sap_password}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "apikey", "value": "{{apikey}}" },
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{sap_xml}}",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": "{{gateway}}/sap-pi-test{{sap_path}}?{{sap_query}}",
+            "description": "body มาจากตัวแปร `sap_xml`\n\n- ค่าเริ่มต้นเป็น XML ทดสอบ (ไม่ใช่ใบงานจริง) → ถ้า login ผ่าน SAP จะตอบ **500** เพราะแปลงข้อมูลไม่ได้ = **ถือว่าเส้นทาง + login ผ่านแล้ว**\n- ถ้าจะส่งใบงานจริง เอา XML ของ `WorkOrderUpdate` มาใส่ใน `sap_xml` — ดูตัวอย่างจริงได้จากตาราง `kong_api_logs` route `sap-pi-soap` (เก็บ XML เต็มใบตั้งแต่ 6 ต.ค. 2026) หรือขอ spec จาก Thai Namthip\n\n⚠️ XML ใบงานจริงจะถูกสร้างเป็น message ในระบบ SAP ของ Thai Namthip"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 ขาส่งไป SAP — ผ่าน fo-gateway (เหมือนที่ D365 ทำจริง)",
+      "description": "ยิงเหมือน D365 ทุกอย่าง: D365 ส่ง XML ของ SAP (`soapBodySap`) และ `URL|user|password` (`resouceSap`) เข้ารหัส base64 ให้ fo-gateway แล้ว fo-gateway เป็นคนยิงต่อไป SAP ผ่าน Kong `/sap-pi`\n\nPre-request script สร้าง base64 ให้อัตโนมัติจากตัวแปร",
+      "item": [
+        {
+          "name": "4. D365FoWorkOrderInboundSAP",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b64 = s => CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(s));",
+                  "const v = k => pm.collectionVariables.get(k) || pm.variables.get(k) || '';",
+                  "if (!v('sap_password')) { throw new Error('ยังไม่ได้ใส่ sap_password ใน Current value'); }",
+                  "// fo-gateway ยิงจาก VM WebApplication ซึ่งอยู่ใน allow list ของ /sap-pi จึงใช้ /sap-pi ไม่ใช่ /sap-pi-test",
+                  "const resource = v('gateway') + '/sap-pi' + v('sap_path') + '?' + v('sap_query') + '|' + v('sap_user') + '|' + v('sap_password');",
+                  "pm.variables.set('soapBodySap_b64', b64(v('sap_xml')));",
+                  "pm.variables.set('resouceSap_b64', b64(resource));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('gateway รับ request (HTTP 200)', () => pm.response.to.have.status(200));",
+                  "console.log(pm.response.text().substring(0, 1500));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{gw_user}}", "type": "string" },
+                { "key": "password", "value": "{{gw_password}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction", "value": "\"http://tempuri.org/ID365FoService/D365FoWorkOrderInboundSAP\"" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <D365FoWorkOrderInboundSAP xmlns=\"http://tempuri.org/\">\n      <soapBodySap>{{soapBodySap_b64}}</soapBodySap>\n      <resouceSap>{{resouceSap_b64}}</resouceSap>\n    </D365FoWorkOrderInboundSAP>\n  </soapenv:Body>\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": "{{gateway}}/d365fo/D365FoService.svc",
+            "description": "เส้นเต็มเหมือนของจริง: Postman → Kong `/d365fo` → fo-gateway → Kong `/sap-pi` → SAP PI\n\nดูผลของ SAP ในข้อความที่ fo-gateway ตอบกลับ (Postman Console)\n\nlog ของ Kong mask รหัสใน `resouceSap` ให้อัตโนมัติ (เก็บแค่ `URL|***|***`)\n\n⚠️ ถ้า `sap_xml` เป็นใบงานจริง จะสร้าง message จริงใน SAP ของ Thai Namthip"
+          }
+        }
+      ]
+    }
+  ]
+}

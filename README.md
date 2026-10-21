@@ -161,6 +161,13 @@ bash scripts/load-test.sh <server-ip> <jwt-token>
 | `/health` | OneLake Middleware (:3005) | 200/min | Public |
 | `/v1/main/*` | Main C# API (:5000) | 200/min | — |
 | `/v1/safety/*` | Safety API (:5174) | 200/min | — |
+| `/sims-uat/*` | BEVPRO SIMS UAT (`bevpro-sims-uat.azurewebsites.net`) | 200/min | SIMS ตรวจเอง ไม่มี JWT ของ Kong · `integrations/mobile/*` = OAuth Bearer · `integrations/sap/*` = SOAP XML + Basic auth · http และ https (เปิด http 2026-09-17 — ขา http ไม่เข้ารหัส) |
+| `POST /sims-uat/api/v1/integrations/sap/service-orders` | BEVPRO SIMS UAT — route แยก `sims-uat-sap-service-orders` | 200/min | SOAP XML + Basic auth (SAP ส่งใบงานเข้า SIMS) · route เฉพาะ ชนะ `/sims-uat/*` เพราะ path ยาวกว่า |
+| `/d365fo/*` | D365 F&O SOAP gateway (`fo-gateway.bevproasia.com` = IIS บน VM WebApplication) | ไม่จำกัด | **https เท่านั้น** · ยังไม่มี auth ที่ Kong — เฟสถัดไปใส่ basic-auth plugin · ใช้แทนการเรียก `http://fo-gateway...` ตรง (เดิมไม่เข้ารหัส) · สร้างด้วย `scripts/add-d365fo-route.sh` |
+| ~~`/sap-pi/*`~~ | **ลบแล้ว 2026-10-07** | — | route เดิม (`sap-pi-soap`) ไป SAP QAS — D365 F&O UAT กลับไปยิง qbx ตรง จึงไม่มีผู้ใช้ · ใช้ `/sap-pi-uat` แทน · log เก่ายังดูได้ใน dashboard (route `sap-pi-soap`) |
+| `/sap-pi-uat/*` | SAP PI **QAS** (`qbx.thainamthip.co.th:8100` · service `sap-pi-uat` เดิมชื่อ `sap-pi`) | ไม่จำกัด | **ขาออก UAT** ให้ SIMS UAT ใช้ · http + https + **ip-restriction** 16 IP (SIMS · ออฟฟิศ · VM — กัน open relay) · ผู้เรียกส่ง Basic auth ของ `SVC_NAV_01` มาเอง Kong ไม่เก็บรหัส · Thai Namthip whitelist `20.6.32.81` ให้แล้ว (เทสได้ 401 = ถึงปลายทาง) · เก็บ request/response body · สร้างด้วย `scripts/add-sap-egress-route.sh` |
+| `/sap-pi-prod/*` | SAP PI **PRD** (`pbx.thainamthip.co.th:8100` · service `sap-pi-prod`) | ไม่จำกัด | **ขาออก Prod** — allow เฉพาะเทสบน VM จนกว่าจะรู้ IP ของ SIMS Prod (`SIMS_PROD_IPS=... sh scripts/add-sap-pi-env-routes.sh`) · **ห้ามใส่ IP ออฟฟิศ** · pbx อนุญาต IP Kong อยู่แล้ว (เทสได้ 401 จาก SAP 2026-10-07) · D365 F&O Prod ยิง pbx ตรงไม่ผ่าน Kong |
+| ~~`/sap-pi-test/*`~~ | ลบแล้ว 2026-10-07 | — | ทางเทสแบบ API key (consumer `sap-tester`) ถูกยกเลิก — ใช้ `/sap-pi-uat` (ip-restriction) |
 
 ## 🔐 JWT Flow — Kong Consumer ราย App
 
@@ -199,11 +206,14 @@ curl.exe -s -X PATCH "http://localhost:8001/plugins/$($p.id)" --data "enabled=fa
   - **Kong — Per-Consumer Overview** — req/s, 429, bandwidth แยกราย Consumer (Prometheus)
   - **Kong — Traffic & Logs** — metrics สด + log ล่าสุดจากตาราง `kong_api_logs`
   - **Kong — Deep Analysis** — ภาพรวม/การใช้งาน/ความเร็ว/error/โควตาเน็ต/rate limit (จาก log)
-  - **Kong — ปริมาณข้อมูลราย endpoint / รายพนักงาน** (`kong-upload-drill`) — เลือก endpoint แล้วดู upload/download รายพนักงาน
+  - **Kong — ปริมาณข้อมูลราย endpoint / รายพนักงาน** (`kong-upload-drill`) — เลือก endpoint แล้วดู upload/download รายพนักงาน + ตารางรายคำขอ (1 แถว = 1 request แยกขาขึ้น/ขาลง)
   - **Kong — ใครยิงอะไร** (`kong-who-calls-what`) — dropdown IP · ชนิดแอป · user · endpoint กรองทุก panel + log ดิบ (ใช้ตอบ "เครื่องไหนยิงเส้นไหน")
   - **Lock Contention — Manpower** (`kong-lock-contention`) — จับอาการ upstream ค้าง 30 วินาทีจาก lock ในฐานข้อมูล: นับคำขอที่ตอบ 200 แต่ค้าง (แอปกลืน exception จึงไม่ขึ้น error), เทียบกลุ่ม endpoint ที่แตะตาราง `Manpower_Operations` กับกลุ่มควบคุม, วงจร retry ของแอปมือถือ, และกราฟรายวันไว้วัดผลหลังสร้าง index
   - **SQL Server — Lock สด** (`sqlserver-lock-live`) — สายโซ่การบล็อกตอนนี้, transaction ที่เปิดค้าง, สุขภาพ index ของ `Manpower_Operations`, ยอด `LCK_*` wait (datasource `mssqlbevpro`)
   - **SQL Server — Lock ย้อนหลัง** (`sqlserver-lock-history`) — กราฟย้อนหลังจากตาราง `sql_*_samples` ที่ cron เก็บทุก 1 นาที ใช้ตอบว่า "เมื่อวานตอนนั้นใครถือ lock"
+  - **SIMS → SAP (ขาไป)** (`kong-sims-to-sap`) — route `sap-pi-uat-soap` (QAS) / `sap-pi-prod-soap` (PRD) → SAP PI (`sap-pi-soap` = `/sap-pi` เดิม ลบแล้ว เหลือไว้ดูประวัติ): สำเร็จ / 401 SAP ไม่รับรหัส / 403 Kong บล็อก / 5xx, ตารางผู้เรียกราย IP (ตั้งชื่อ IP ที่รู้จักไว้แล้ว — *ไม่รู้จัก* = ตรวจว่าเป็น SIMS), interface จาก query string, request body + response body (คอลัมน์ "SAP ตอบ" = SOAP fault / ข้อความหน้า error)
+  - **SAP → SIMS (ขากลับ)** (`kong-sap-to-sims`) — route `sims-uat-sap-service-orders` → SIMS UAT: สำเร็จ / 200 + TYPE=E / 4xx / 5xx, ORDERID · NOTIF_NO · จำนวนใบงานต่อข้อความจาก body, TYPE · MESSAGE จาก response body, ตารางผู้เรียกราย IP
+  - สอง dashboard นี้สร้างจาก `scripts/gen-sims-sap-dashboards.py` (แก้ที่สคริปต์แล้ว generate ใหม่ อย่าแก้ JSON มือ) · ตาราง log ไม่มี index ที่ `route_name` query ช่วง 7 วัน ~3 วิ / 30 วัน ~15 วิ จึงตั้ง refresh 15 นาที
 - dashboard ที่อ่านจาก log ใช้ datasource Postgres uid `konglogs` · `request_body` ไม่ได้เก็บ (log-receiver ตั้ง null)
 - ข้อจำกัด OSS: label `consumer` มีเฉพาะ request count + bandwidth (latency ได้ละเอียดสุดราย service/route)
 

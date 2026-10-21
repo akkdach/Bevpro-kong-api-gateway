@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| เวอร์ชันเอกสาร | 2026-09-01 |
+| เวอร์ชันเอกสาร | 2026-10-14 (เพิ่ม: เก็บ header เส้น interface ลง log) |
 | ชั้นเอกสาร | B — Dev แก้ได้ |
 | เจ้าของ | DevOps (Ronnachai) |
 | ใช้กับ | ทุกแอปที่เรียก API ผ่าน `bevprogateway.southeastasia.cloudapp.azure.com` |
@@ -20,7 +20,7 @@
 | `Authorization: Bearer <JWT>` | ทุกแอปหลัง login | **jwt plugin** ตรวจลายเซ็น + `exp` และใช้ claim `iss` หา consumer (`key_claim_name=iss`) — token ไม่มี `iss` = 401 ทันที · **pre-function** ถอดเฉพาะ claim `sub` → คอลัมน์ `jwt_user` (ห้ามเก็บ token ทั้งใบ — claim `email` มีรหัสผ่านจริง) · ตอนส่งเข้า http-log Kong เซ็นเซอร์ค่าเป็น `REDACTED` เอง | log: `jwt_user`, `consumer_username` |
 | `X-App-Name: <ชื่อ-repo>` | ทุกแอป (ใส่เองที่ api client กลาง — ดูข้อ 4) | log-receiver อ่านเข้า | log: `app_name` → dashboard "สรุปรายแอป" / "ใครยิงอะไร" |
 | `Device_ID: <รหัสเครื่อง>` | แอปมือถือช่าง (ทุก request) | log-receiver อ่านเข้า (Kong แปลงชื่อ header เป็นตัวพิมพ์เล็ก) | log: `device_id` → แยกรายเครื่อง/โควตาเน็ต |
-| `Content-Type` | ทุกแอป | **pre-function** ใช้ตัดสินว่าเก็บ request body ไหม — เก็บเฉพาะ JSON / form / text ≤ 4 KB (login ทุกแบบ redact เป็น `[REDACTED login]`, field `password`/`pwd` mask เป็น `***`) | log: `request_body` |
+| `Content-Type` | ทุกแอป | **pre-function** ใช้ตัดสินว่าเก็บ request body ไหม — เก็บเฉพาะ JSON / form / text ≤ 4 KB · เส้น interface XML (SAP/D365/SIMS) เก็บถึง 64 KB (login ทุกแบบ redact เป็น `[REDACTED login]`, field `password`/`pwd` mask เป็น `***`) | log: `request_body` |
 | `x-client-ip` / `x-client-ua` | hub apps (server-to-server ตอนรายงาน login-log ไป SM) | ส่งผ่านเฉยๆ | SM เห็น IP/browser จริงของผู้ใช้ แทน IP ของ server แอป |
 | `Origin` + `Access-Control-Request-Method/Headers` | browser ส่งเองตอน preflight (OPTIONS) | **cors plugin** (global) ตอบว่าอนุญาตอะไร | ดู whitelist ข้อ 3 |
 | `Host` / SNI | client/Kong | Kong เลือก route · ฝั่ง upstream สำคัญกับ IIS ที่ binding ผูกชื่อ (เช่น `soap.bevproasia.com:88` — ยิงด้วย IP เปล่าโดน `400 Invalid Hostname`) | — |
@@ -41,6 +41,12 @@ gateway ต้องอ่านตัวนี้แทน remote address), `X-
 | `X-RateLimit-Limit-*` / `X-RateLimit-Remaining-*` / `RateLimit-*` | เพดานและโควตาที่เหลือของ rate-limiting | ใกล้ 0 = กำลังจะโดน 429 |
 | `WWW-Authenticate: Key realm="kong"` | jwt plugin ของ Kong เป็นคนตอบ 401 | 401+header นี้ = token ไม่ผ่าน Kong (ยังไม่ถึง backend) |
 | `Access-Control-Allow-Origin/Headers/Methods/Credentials` | cors plugin ตอบ preflight | browser ใช้ตัดสินว่าปล่อย request จริงไหม |
+
+**ดูย้อนหลังได้ (เฉพาะเส้น interface):** ตั้งแต่ 2026-10-14 log-receiver เก็บ header ขาเข้า/ขากลับของเส้น
+SAP/SIMS/D365 ลงคอลัมน์ `request_headers` / `response_headers` (JSONB) — เปิดดูได้ใน dashboard SIMS→SAP / SAP→SIMS
+(panel ตาราง body) · เก็บค่าตามที่ส่งมา (รวม `Cookie`) ยกเว้น `Authorization` ที่แสดงเป็น
+`Basic user=<บัญชี> pass_len=<ความยาวรหัส> b64_len=<ความยาว base64>` — ดูได้ว่าใครยิงและรหัสถูกตัดไหม โดยไม่เก็บตัวรหัส
+· ล้างที่ 30 วัน · route อื่น (แอปมือถือ) ไม่เก็บ และ Kong เซ็นเซอร์ `Authorization` เป็น `REDACTED` ให้เอง
 
 **สูตรอ่าน error เร็ว:**
 `{"message":"no Route matched..."}` = Kong ไม่มี route · 401 + `WWW-Authenticate: Key realm="kong"` = token ไม่ผ่าน Kong ·

@@ -92,6 +92,9 @@ services:
       KONG_MEM_CACHE_SIZE: "256m"                    # shared cache สำหรับ entities/config (แชร์ทุก worker)
       KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"  # Reuse upstream connections
       KONG_UPSTREAM_KEEPALIVE_TIMEOUT: "60"          # Keep-alive timeout (seconds)
+      # body เล็กกว่านี้อยู่ใน RAM ให้ pre-function เก็บลง log ได้ (default 8k) — XML interface ถึง 14 KB
+      # ต้องคู่กับเพดาน 64 KB ใน scripts/add-jwt-user-plugin.sh · upload รูปยังเกินจึงไม่ถูกเก็บ
+      KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE: "64k"
 
       # Logging
       KONG_PROXY_ACCESS_LOG: "/dev/stdout"

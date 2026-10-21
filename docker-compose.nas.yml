@@ -65,6 +65,7 @@ services:
       KONG_NGINX_WORKER_CONNECTIONS: "10240"
       KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: "10000"
       KONG_UPSTREAM_KEEPALIVE_TIMEOUT: "60"
+      KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE: "64k"   # ให้ log เก็บ XML interface ได้ทั้งใบ (ดู docker-compose.yml)
       KONG_PROXY_ACCESS_LOG: "/dev/stdout"
       KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
       KONG_PROXY_ERROR_LOG: "/dev/stderr"

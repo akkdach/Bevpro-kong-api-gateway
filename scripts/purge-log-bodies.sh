@@ -6,6 +6,8 @@
 #   ลงคอลัมน์ request_body ~1.3 GB/เดือน — body มี PII (ข้อมูลลูกค้า/GPS/รหัสพนักงาน)
 #   จึงเก็บไว้แค่ 30 วันพอสำหรับ debug แล้วล้าง  แถว log ยังอยู่ครบ (สถิติ/กราฟไม่กระทบ)
 #   แค่คอลัมน์ request_body กลายเป็น NULL
+#   ตั้งแต่ 2026-10-07 ล้าง response_body ด้วย (เส้น interface SAP — SIMS ส่งใบงานทั้งใบกลับมา = PII)
+#   ตั้งแต่ 2026-10-14 ล้าง request_headers / response_headers ด้วย (เก็บเฉพาะเส้น interface — log-receiver/server.js)
 #
 # ติดตั้ง cron (รันเป็น root บน VM — เหมือน renew-ssl.sh):
 #   sudo -n crontab -l | { cat; echo "30 2 * * * /home/adminwebapp/kong/scripts/purge-log-bodies.sh >> /var/log/purge-log-bodies.log 2>&1"; } | sudo -n crontab -
@@ -15,8 +17,10 @@
 DAYS="${1:-30}"
 DB_CONTAINER="${DB_CONTAINER:-kong-database}"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] purge request_body older than ${DAYS} days"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] purge request/response body + headers older than ${DAYS} days"
 docker exec "$DB_CONTAINER" psql -U kong -d kong -At -c \
-  "UPDATE kong_api_logs SET request_body = NULL
-   WHERE request_time < now() - interval '${DAYS} days' AND request_body IS NOT NULL" \
+  "UPDATE kong_api_logs SET request_body = NULL, response_body = NULL, request_headers = NULL, response_headers = NULL
+   WHERE request_time < now() - interval '${DAYS} days'
+     AND (request_body IS NOT NULL OR response_body IS NOT NULL
+          OR request_headers IS NOT NULL OR response_headers IS NOT NULL)" \
   && echo "  done"
