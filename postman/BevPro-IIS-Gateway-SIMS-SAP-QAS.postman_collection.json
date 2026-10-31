@@ -1,0 +1,856 @@
+{
+	"info": {
+		"_postman_id": "3bf7b17f-a108-449a-b36a-588479053bcc",
+		"name": "BevPro IIS Gateway - SIMS SAP QAS",
+		"description": "Tests for the IIS gateway on VM BPC (`20.33.118.76`), site **SimsQas-gateway** (`fo-gateway.bevproasia.com`), QAS phase.\nBased on `BevPro-Gateway-SIMS-SAP.postman_collection.json`: same bodies, headers and tests.\n\n| Folder | Path | Ready when |\n|---|---|---|\n| 00 Path checks | IIS proxy, Kong `/d365fo`, SAP and SIMS with no credentials | now (IIS -> fo-gateway verified 2026-10-30) |\n| **SAP to F&O UAT** | SAP -> (**IIS** ->) Kong `/d365fo` -> fo-gateway -> **F&O UAT** | via Kong: now · via IIS: IIS rule `sap-to-fo-uat` added |\n| SAP to SIMS | SAP -> **IIS** -> Kong `/sims-uat` -> SIMS UAT | now (IIS rule active since 2026-10-30) |\n| SIMS to SAP QAS | SIMS -> Kong `/sap-pi-uat` -> **IIS** -> qbx | IIS rule `kong-to-sap-qas` added + Kong service changed |\n\n### Setup\nSet the **Current value** of `sapPassword` and `simsPassword`. Never put passwords in Initial value (it is exported with the collection).\n`sapUsername` is `SVC_NAV_QBX` (the user SIMS uses on qbx). If a password is empty (or the IIS path is not confirmed yet), the request is sent WITHOUT credentials and the test result says why. The runner stops on the first real 401.\n\n### Cut-over steps (not done yet)\n1. On SimsQas-gateway, add these rules **above** the `(.*)` rule:\n```xml\n<!-- SAP -> F&O UAT through Kong /d365fo. Exact endpoint only, and never for requests coming back from Kong (no IIS<->Kong bounce) -->\n<rule name=\"sap-to-fo-uat\" stopProcessing=\"true\">\n  <match url=\"^d365fo/(D365FoService\\.svc)$\" />\n  <conditions><add input=\"{REMOTE_ADDR}\" pattern=\"^20\\.6\\.32\\.81$\" negate=\"true\" /></conditions>\n  <action type=\"Rewrite\" url=\"https://bevprogateway.southeastasia.cloudapp.azure.com/d365fo/{R:1}\" />\n</rule>\n<!-- SAP -> SIMS: only the SAP integration path, POST only -->\n<rule name=\"sap-to-sims-uat\" stopProcessing=\"true\">\n  <match url=\"^sims-uat/api/v1/integrations/sap/(.*)\" />\n  <conditions><add input=\"{REQUEST_METHOD}\" pattern=\"^POST$\" /></conditions>\n  <action type=\"Rewrite\" url=\"https://bevprogateway.southeastasia.cloudapp.azure.com/sims-uat/api/v1/integrations/sap/{R:1}\" />\n</rule>\n<!-- SIMS -> SAP QAS: only from Kong (Kong reaches fo-gateway.bevproasia.com via its public IP) -->\n<rule name=\"kong-to-sap-qas\" stopProcessing=\"true\">\n  <match url=\"^sap-pi-uat/(.*)\" />\n  <conditions><add input=\"{REMOTE_ADDR}\" pattern=\"^20\\.6\\.32\\.81$\" /></conditions>\n  <action type=\"Rewrite\" url=\"https://qbx.thainamthip.co.th:8100/{R:1}\" />\n</rule>\n```\n2. Kong service `sap-pi-uat` (back up the JSON first): protocol `https`, host `fo-gateway.bevproasia.com`, port `443`, path `/sap-pi-uat`. Rollback: host `qbx.thainamthip.co.th`, port `8100`, path empty. Do not use plain http: the hop would carry Basic credentials unencrypted.\n3. Run folder 00, then the two credential folders. The path tests must show IIS and Kong.\n\n### Side effects and prerequisites\n- After the cut-over Kong logs `client_ip` `20.33.118.76` for SAP -> SIMS; the original caller is in `X-Forwarded-For`. Dashboard caller panels change accordingly.\n- IIS (ARR) validates the qbx TLS certificate; Kong did not. The VM already reaches qbx and pbx on 8100 (401 without credentials, 2026-10-30).\n- For SAP PI QAS to call IIS, TNT needs: DNS or hosts entry for `fo-gateway.bevproasia.com`, outbound TCP 443 to `20.33.118.76`, and trust for its certificate. A pass from the office does not prove PI can reach it; confirm with one real PI message.\n- Only folder `SAP to F&O UAT` writes into D365 F&O (UAT). The SIMS folders never reach F&O, so they create nothing in the F&O Interface Log.\n- Give TNT the endpoint URL directly (`https://fo-gateway.bevproasia.com/d365fo/D365FoService.svc`). The WSDL served through the proxy advertises `localhost:180`, so a channel generated from it would point to the wrong place.\n- The Kong -> IIS hop of service `d365fo-gateway` is plain http (port 80). Moving it to https/443 protects order data in transit; it also carries the existing F&O -> SAP traffic, so test TestConnect right after changing it.\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "00 Path checks (read-only, no credentials)",
+			"description": "Safe checks. None of these write data or send a password, and cookies are off.\n\nRun this folder first to see which hops are working.",
+			"item": [
+				{
+					"name": "IIS proxy -> fo-gateway (GET D365FoService.svc)",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{iisGatewayUrl}}/D365FoService.svc",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"D365FoService.svc"
+							]
+						},
+						"description": "SimsQas-gateway forwards to the fo-gateway app on localhost:180.\n\nExpected: 200 (WCF service page)."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "IIS blocks .json config files (HEAD)",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "HEAD",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{iisGatewayUrl}}/appsettings.json",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"appsettings.json"
+							]
+						},
+						"description": "Checks that .json config files are not served. HEAD returns no body.\n\nExpected: 404. A 200 means the block is gone: stop and report it."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('.json files are blocked (404)', function () {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "F&O UAT lane: TestConnect via Kong /d365fo -> IIS -> fo-gateway",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							},
+							{
+								"key": "SOAPAction",
+								"value": "\"http://tempuri.org/ID365FoService/TestConnect\""
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{gatewayUrl}}/d365fo/D365FoService.svc",
+							"host": [
+								"{{gatewayUrl}}"
+							],
+							"path": [
+								"d365fo",
+								"D365FoService.svc"
+							]
+						},
+						"description": "Same path D365 F&O UAT uses to send work orders to SAP (`D365FoWorkOrderInboundSAP`): Kong -> SimsQas-gateway -> fo-gateway (:180) -> SAP QAS.\n\n`TestConnect` stops at fo-gateway: it does not write data, does not call SAP and creates nothing in the F&O Interface Log. Expected: 200, `TestConnectResult` true.",
+						"body": {
+							"mode": "raw",
+							"raw": "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><TestConnect xmlns=\"http://tempuri.org/\"/></s:Body></s:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('TestConnect returns true', function () {",
+									"    pm.expect(pm.response.text()).to.match(/<TestConnectResponse[\\s\\S]*true/);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TestConnect via IIS directly",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							},
+							{
+								"key": "SOAPAction",
+								"value": "\"http://tempuri.org/ID365FoService/TestConnect\""
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{iisGatewayUrl}}/D365FoService.svc",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"D365FoService.svc"
+							]
+						},
+						"description": "Same check without Kong in front. Expected: 200, `TestConnectResult` true.",
+						"body": {
+							"mode": "raw",
+							"raw": "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><TestConnect xmlns=\"http://tempuri.org/\"/></s:Body></s:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('TestConnect returns true', function () {",
+									"    pm.expect(pm.response.text()).to.match(/<TestConnectResponse[\\s\\S]*true/);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SAP QAS reachability via Kong - no Authorization (expect 401)",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{gatewayUrl}}/sap-pi-uat/XISOAPAdapter/MessageServlet",
+							"host": [
+								"{{gatewayUrl}}"
+							],
+							"path": [
+								"sap-pi-uat",
+								"XISOAPAdapter",
+								"MessageServlet"
+							]
+						},
+						"description": "Sends no Authorization header, so SAP answers 401 without counting a failed login.\n\nExpected: 401 with `WWW-Authenticate: Basic realm=\"XISOAPApps\"` = reached SAP PI QAS.\nBefore the cut-over the hop test shows IIS=no; after it, IIS=yes.",
+						"body": {
+							"mode": "raw",
+							"raw": "<ping/>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('401 from SAP PI (no login attempt)', function () {",
+									"    pm.response.to.have.status(401);",
+									"    pm.expect(pm.response.headers.get('WWW-Authenticate') || '').to.include('XISOAPApps');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SIMS reachability via IIS - no Authorization (expect 401)",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{iisGatewayUrl}}/sims-uat/api/v1/integrations/sap/service-orders",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"sims-uat",
+								"api",
+								"v1",
+								"integrations",
+								"sap",
+								"service-orders"
+							]
+						},
+						"description": "Path SAP will use after the cut-over: SAP -> SimsQas-gateway -> Kong -> SIMS UAT. No credentials.\n\nExpected: 401 with both IIS (`X-Powered-By: ARR/3.0`) and Kong (`Via: kong`) headers. The Server header shows IIS because ARR rewrites it.\n404 with ARR but no Kong header = the `sap-to-sims-uat` rule is not on SimsQas-gateway.",
+						"body": {
+							"mode": "raw",
+							"raw": "<ping/>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('401 from SIMS through IIS and Kong', function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const xpb = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'x-powered-by').map(h => h.value).join(', ');",
+									"const viaIIS = /ARR/i.test(xpb);",
+									"const viaKong = ['X-Kong-Upstream-Latency', 'X-Kong-Proxy-Latency', 'X-Kong-Response-Latency'].some(h => pm.response.headers.has(h))",
+									"    || /kong/i.test(pm.response.headers.get('Via') || '') || /kong/i.test(pm.response.headers.get('Server') || '');",
+									"if (pm.response.code === 404 && viaIIS && !viaKong) {",
+									"    pm.test('IIS has no sap-to-sims-uat rule yet (request fell through to fo-gateway)', function () {",
+									"        pm.expect.fail('add the sap-to-sims-uat rule above the (.*) rule');",
+									"    });",
+									"} else if (pm.response.code === 404 && viaKong) {",
+									"    pm.test('IIS rule present, but Kong answered 404 (check rewrite path / Kong route / method)', function () {",
+									"        pm.expect.fail('Kong 404');",
+									"    });",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "SAP to F&O UAT (writes a work order into F&O UAT)",
+			"description": "Simulates SAP sending a work order (`WorkOrderOutbound`) into D365 F&O UAT through fo-gateway. Same order data as the SIMS sample (`orderId` variable), re-wrapped in the SAP format fo-gateway expects (`ns1:WorkOrderOutbound` / `ns2:HEADER`).\n\nNo credentials (fo-gateway is anonymous). **Creates or updates the order in F&O UAT**. Send one request at a time (not the Runner: both requests use the same `orderId`). Check the result in the response (`TYPE`/`MESSAGE`) and the service order itself in F&O UAT.",
+			"item": [
+				{
+					"name": "Work Order to F&O UAT via Kong /d365fo",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							},
+							{
+								"key": "SOAPAction",
+								"value": "\"urn:microsoft-dynamics-schemas/codeunit/SAPWS:WorkOrderOutbound\""
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\"><SOAP:Header/><SOAP:Body><ns1:WorkOrderOutbound xmlns:ns1=\"urn:microsoft-dynamics-schemas/codeunit/SAPWS\"><ns1:workOrderOutboundXML><ns2:HEADER xmlns:ns2=\"urn:microsoft-dynamics-nav/xmlports/x50003\">\n                    <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                    <ns2:CUSTOMER>0509595308</ns2:CUSTOMER>\n                    <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                    <ns2:ORDER_TYPE>ZC04</ns2:ORDER_TYPE>\n                    <ns2:AUARTTEXT>Placement Order</ns2:AUARTTEXT>\n                    <ns2:PLANPLANT>9317</ns2:PLANPLANT>\n                    <ns2:MN_WK_CTR>W33</ns2:MN_WK_CTR>\n                    <ns2:PLANT>9317</ns2:PLANT>\n                    <ns2:PMACTTYPE>PCC</ns2:PMACTTYPE>\n                    <ns2:ILATX>Placement Connectivity</ns2:ILATX>\n                    <ns2:PLANGROUP>033</ns2:PLANGROUP>\n                    <ns2:EQUIPMENT />\n                    <ns2:EQKTX />\n                    <ns2:INBDT />\n                    <ns2:CDECODE />\n                    <ns2:ASSEMBLY>000000000040000189</ns2:ASSEMBLY>\n                    <ns2:OBJECTTYPE>TCO</ns2:OBJECTTYPE>\n                    <ns2:MAINTPLANT />\n                    <ns2:PRODUCTION_START_DATE>2025-01-04</ns2:PRODUCTION_START_DATE>\n                    <ns2:PRODUCTION_FINISH_DATE>2025-01-04</ns2:PRODUCTION_FINISH_DATE>\n                    <ns2:PRODUCTION_START_TIME>00:00:00</ns2:PRODUCTION_START_TIME>\n                    <ns2:PRODUCTION_FINISH_TIME>00:00:00</ns2:PRODUCTION_FINISH_TIME>\n                    <ns2:USERSTATUS>EXSV INIT</ns2:USERSTATUS>\n                    <ns2:SHORT_TEXT>Install Cooler/5 - Develop Indirect Outl</ns2:SHORT_TEXT>\n                    <ns2:MATERIAL />\n                    <ns2:SERIALNO />\n                    <ns2:COMP_CODE>9190</ns2:COMP_CODE>\n                    <ns2:PROFIT_CTR>9190222002</ns2:PROFIT_CTR>\n                    <ns2:CO_AREA>TH00</ns2:CO_AREA>\n                    <ns2:RESPCCTR>9190222002</ns2:RESPCCTR>\n                    <ns2:WBS_ELEM />\n                    <ns2:PROJ_DEF />\n                    <ns2:LOC_COMP_CODE>9190</ns2:LOC_COMP_CODE>\n                    <ns2:LOC_CO_AREA>TH00</ns2:LOC_CO_AREA>\n                    <ns2:ASSET_NO />\n                    <ns2:SUB_NUMBER />\n                    <ns2:COSTCENTER />\n                    <ns2:SALESORG />\n                    <ns2:DISTR_CHAN />\n                    <ns2:DIVISION />\n                    <ns2:ACTUAL_START_DATE />\n                    <ns2:ACTUAL_FINISH_DATE />\n                    <ns2:ACTUAL_START_TIME>00:00:00</ns2:ACTUAL_START_TIME>\n                    <ns2:ACTUAL_FINISH_TIME>00:00:00</ns2:ACTUAL_FINISH_TIME>\n                    <ns2:REFDATE>2025-01-04</ns2:REFDATE>\n                    <ns2:SALES_ORD />\n                    <ns2:ENTERED_BY>PIUSER_HTTP</ns2:ENTERED_BY>\n                    <ns2:ENTER_DATE>2024-10-02</ns2:ENTER_DATE>\n                    <ns2:CHANGED_BY>64000952</ns2:CHANGED_BY>\n                    <ns2:CHANGE_DATE>2025-01-20</ns2:CHANGE_DATE>\n                    <ns2:SYS_STATUS>REL PRT MANC NMAT PRC</ns2:SYS_STATUS>\n                    <ns2:ROUTING_NO>1003998008</ns2:ROUTING_NO>\n                    <ns2:EQ_MODEL>COOLER SRCL400R with connectivity</ns2:EQ_MODEL>\n                    <ns2:SERVICE_TIME>0</ns2:SERVICE_TIME>\n                    <ns2:OPERATIONS>\n                        <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                        <ns2:ACTIVITY>0010</ns2:ACTIVITY>\n                        <ns2:CONTROL_KEY>PM07</ns2:CONTROL_KEY>\n                        <ns2:WORK_CNTR>W33</ns2:WORK_CNTR>\n                        <ns2:PLANT>9317</ns2:PLANT>\n                        <ns2:DESCRIPTION>Install Cooler/5 - Develop Indirect Outl</ns2:DESCRIPTION>\n                        <ns2:NUMBER_OF_CAPACITIES>0</ns2:NUMBER_OF_CAPACITIES>\n                        <ns2:ACTTYPE />\n                        <ns2:DURATION_NORMAL>0.0</ns2:DURATION_NORMAL>\n                        <ns2:DURATION_NORMAL_UNIT>MIN</ns2:DURATION_NORMAL_UNIT>\n                        <ns2:WORK_ACTIVITY>0.0</ns2:WORK_ACTIVITY>\n                        <ns2:UN_WORK>MIN</ns2:UN_WORK>\n                        <ns2:CONF_NO>0023392001</ns2:CONF_NO>\n                        <ns2:WORK_ACTUAL>0.000</ns2:WORK_ACTUAL>\n                        <ns2:ACT_START_DATE />\n                        <ns2:ACT_START_TIME>00:00:00</ns2:ACT_START_TIME>\n                        <ns2:ACT_END_DATE />\n                        <ns2:ACT_END_TIME>00:00:00</ns2:ACT_END_TIME>\n                    </ns2:OPERATIONS>\n                    <ns2:COMPONENTS>\n                        <ns2:ORDERID />\n                        <ns2:RESERV_NO />\n                        <ns2:RES_ITEM />\n                        <ns2:MOVEMENT />\n                        <ns2:WITHDRAWN />\n                        <ns2:MATERIAL />\n                        <ns2:PLANT />\n                        <ns2:STGE_LOC />\n                        <ns2:BATCH />\n                        <ns2:GL_ACCOUNT />\n                        <ns2:ITEM_CAT />\n                        <ns2:ITEM_NUMBER />\n                        <ns2:ACTIVITY />\n                        <ns2:PRICE />\n                        <ns2:PRICE_UNIT />\n                        <ns2:PUR_GROUP />\n                        <ns2:MATL_GROUP />\n                        <ns2:MATL_DESC />\n                        <ns2:REQUIREMENT_QUANTITY />\n                        <ns2:REQUIREMENT_QUANTITY_UNIT />\n                        <ns2:REQ_DATE />\n                        <ns2:REQ_TIME />\n                        <ns2:MOVE_TYPE />\n                        <ns2:COMMITED_QUAN />\n                        <ns2:WARRANTY_CHECK />\n                    </ns2:COMPONENTS>\n                    <ns2:CUSTOMERS>\n                        <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                        <ns2:CUSTOMER>0509595308</ns2:CUSTOMER>\n                        <ns2:CUST_NAME>TEST CUSTOMER</ns2:CUST_NAME>\n                        <ns2:BUILDING>1</ns2:BUILDING>\n                        <ns2:NAME_CO />\n                        <ns2:STREET>TEST</ns2:STREET>\n                        <ns2:CITY1>บุรีรัมย์</ns2:CITY1>\n                        <ns2:CITY2>อำเภอประโคนชัย</ns2:CITY2>\n                        <ns2:REGION>04</ns2:REGION>\n                        <ns2:POST_CODE>31140</ns2:POST_CODE>\n                        <ns2:TEL_NUMBER>0000000000</ns2:TEL_NUMBER>\n                        <ns2:COUNTRY>THX</ns2:COUNTRY>\n                        <ns2:LOCATION_CODE />\n                        <ns2:TRADENAME>6999</ns2:TRADENAME>\n                        <ns2:TRADDESCP>T-Trade</ns2:TRADDESCP>\n                        <ns2:CUSTOMER_CLASS>C1</ns2:CUSTOMER_CLASS>\n                        <ns2:VTEXT>New</ns2:VTEXT>\n                        <ns2:KEYACCOUNT />\n                        <ns2:LONGITUDE>100.500000000000</ns2:LONGITUDE>\n                        <ns2:LATITUDE>13.750000000000</ns2:LATITUDE>\n                        <ns2:BRSCH>9305</ns2:BRSCH>\n                        <ns2:BRTXT />\n                        <ns2:MON_MOR_FROM>000000</ns2:MON_MOR_FROM>\n                        <ns2:MON_MOR_TO>000000</ns2:MON_MOR_TO>\n                        <ns2:MON_EVEN_FROM>000000</ns2:MON_EVEN_FROM>\n                        <ns2:MON_EVEN_TO>000000</ns2:MON_EVEN_TO>\n                        <ns2:TUE_MOR_FROM>000000</ns2:TUE_MOR_FROM>\n                        <ns2:TUE_MOR_TO>000000</ns2:TUE_MOR_TO>\n                        <ns2:TUE_EVEN_FROM>000000</ns2:TUE_EVEN_FROM>\n                        <ns2:TUE_EVEN_TO>000000</ns2:TUE_EVEN_TO>\n                        <ns2:WED_MOR_FROM>000000</ns2:WED_MOR_FROM>\n                        <ns2:WED_MOR_TO>000000</ns2:WED_MOR_TO>\n                        <ns2:WED_EVEN_FROM>000000</ns2:WED_EVEN_FROM>\n                        <ns2:WED_EVEN_TO>000000</ns2:WED_EVEN_TO>\n                        <ns2:THU_MOR_FROM>000000</ns2:THU_MOR_FROM>\n                        <ns2:THU_MOR_TO>000000</ns2:THU_MOR_TO>\n                        <ns2:THU_EVEN_FROM>000000</ns2:THU_EVEN_FROM>\n                        <ns2:THU_EVEN_TO>000000</ns2:THU_EVEN_TO>\n                        <ns2:FRI_MOR_FROM>000000</ns2:FRI_MOR_FROM>\n                        <ns2:FRI_MOR_TO>000000</ns2:FRI_MOR_TO>\n                        <ns2:FRI_EVEN_FROM>000000</ns2:FRI_EVEN_FROM>\n                        <ns2:FRI_EVEN_TO>000000</ns2:FRI_EVEN_TO>\n                        <ns2:SAT_MOR_FROM>000000</ns2:SAT_MOR_FROM>\n                        <ns2:SAT_MOR_TO>000000</ns2:SAT_MOR_TO>\n                        <ns2:SAT_EVEN_FROM>000000</ns2:SAT_EVEN_FROM>\n                        <ns2:SAT_EVEN_TO>000000</ns2:SAT_EVEN_TO>\n                        <ns2:SUN_MOR_FROM>000000</ns2:SUN_MOR_FROM>\n                        <ns2:SUN_MOR_TO>000000</ns2:SUN_MOR_TO>\n                        <ns2:SUN_EVEN_FROM>000000</ns2:SUN_EVEN_FROM>\n                        <ns2:SUN_EVEN_TO>000000</ns2:SUN_EVEN_TO>\n                    </ns2:CUSTOMERS>\n                    <ns2:NOTIFICATION>\n                        <ns2:NOTIFICATIONHEADER>\n                            <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                            <ns2:NOTIF_TYPE>Z6</ns2:NOTIF_TYPE>\n                            <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                            <ns2:NOTIF_DATE>2024-09-19</ns2:NOTIF_DATE>\n                            <ns2:NOTIF_TIME>16:43:18</ns2:NOTIF_TIME>\n                            <ns2:NOTIF_INCIDENT>IN2410-00260</ns2:NOTIF_INCIDENT>\n                            <ns2:ZZRF_INCIDENT />\n                            <ns2:ZZPROJECT />\n                            <ns2:NOTIF_CODEGROUP>INSTALL1</ns2:NOTIF_CODEGROUP>\n                            <ns2:NOTIF_CODE>IN01</ns2:NOTIF_CODE>\n                            <ns2:NOTIF_CODE_TEXT>ติดตั้ง (OM ใหม่)</ns2:NOTIF_CODE_TEXT>\n                            <ns2:NOTIF_REPORT_BY>45090387</ns2:NOTIF_REPORT_BY>\n                            <ns2:NOTIF_LONGTEXT>Test work order</ns2:NOTIF_LONGTEXT>\n                            <ns2:ZZFIRST />\n                            <ns2:ZZFIRST_SET />\n                            <ns2:ZZPREFERDATE>2024-10-05</ns2:ZZPREFERDATE>\n                            <ns2:NOTIF_EQUIPMENT />\n                        </ns2:NOTIFICATIONHEADER>\n                        <ns2:FIRSTORDER>\n                            <ns2:NOTIF_NO />\n                            <ns2:ITEM_KEY />\n                            <ns2:MATERIAL />\n                            <ns2:DESCRIPT />\n                            <ns2:QUANTITY />\n                            <ns2:TEXT />\n                        </ns2:FIRSTORDER>\n                        <ns2:DOCUMENT>\n                            <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                            <ns2:DOC_TYPE>TDC</ns2:DOC_TYPE>\n                            <ns2:DOC_NO>0000000000000010005218821</ns2:DOC_NO>\n                            <ns2:DOC_URL>http://tpwk2app03/CAMAttachment/?fid=10540369</ns2:DOC_URL>\n                        </ns2:DOCUMENT>\n                        <ns2:CATALOGPROFILE>\n                            <ns2:NOTIF_NO />\n                            <ns2:PROBLEM_CODEGROUP />\n                            <ns2:PROBLEM_CODE />\n                            <ns2:DAMAGE_CODEGROUP />\n                            <ns2:DAMAGE_CODE />\n                            <ns2:DAMAGE_TEXT />\n                            <ns2:CAUSE_CODEGROUP />\n                            <ns2:CAUSE_CODE />\n                            <ns2:CAUSE_TEXT />\n                            <ns2:ACTIVITY_CODEGROUP />\n                            <ns2:ACTIVITY_CODE />\n                            <ns2:ACTIVITY_TEXT />\n                        </ns2:CATALOGPROFILE>\n                    </ns2:NOTIFICATION>\n                    <ns2:HISTORY>\n                        <ns2:HISTORYORDER>\n                            <ns2:ORDERID />\n                            <ns2:ORDERID_HISTORY />\n                            <ns2:CUSTOMER />\n                            <ns2:NOTIF_NO />\n                            <ns2:NOTIF_LONGTEXT />\n                            <ns2:ORDER_TYPE />\n                            <ns2:NOTIF_DATE />\n                            <ns2:NOTIF_TIME />\n                            <ns2:NOTIF_INCIDENT />\n                            <ns2:EQUIPMENT />\n                            <ns2:NOTIF_CODEGROUP />\n                            <ns2:NOTIF_CODE />\n                            <ns2:NOTIF_CODE_TEXT />\n                            <ns2:NOTIF_OBJPART_CODEGROUP />\n                            <ns2:NOTIF_OBJPART_CODE />\n                            <ns2:NOTIF_OBJPART_TEXT />\n                            <ns2:NOTIF_PROBLEM_CODEGROUP />\n                            <ns2:NOTIF_PROBLEM_CODEG />\n                            <ns2:NOTIF_PROBLEM_TEXT />\n                            <ns2:NOTIF_CAUSE_CODEGROUP />\n                            <ns2:NOTIF_CAUSE_CODE />\n                            <ns2:NOTIF_CAUSE_TEXT />\n                            <ns2:NOTIF_ACT_CODEGROUP />\n                            <ns2:NOTIF_ACT_CODE />\n                            <ns2:NOTIF_ACT_TEXT />\n                        </ns2:HISTORYORDER>\n                        <ns2:HISTORYSPAREPART>\n                            <ns2:ORDERID />\n                            <ns2:ORDERID_HISTORY />\n                            <ns2:MATERIAL />\n                            <ns2:MATL_DESC />\n                            <ns2:QUANTITY />\n                            <ns2:UNIT />\n                        </ns2:HISTORYSPAREPART>\n                    </ns2:HISTORY>\n                <ns2:START_MA /><ns2:MA_MONTH /><ns2:ASSET_END_WARRANTY_DATE /><ns2:WORKORDER_WARRANTY /><ns2:COMPRESSOR_WARRANTY /></ns2:HEADER>\n            </ns1:workOrderOutboundXML></ns1:WorkOrderOutbound></SOAP:Body></SOAP:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gatewayUrl}}/d365fo/D365FoService.svc",
+							"host": [
+								"{{gatewayUrl}}"
+							],
+							"path": [
+								"d365fo",
+								"D365FoService.svc"
+							]
+						},
+						"description": "Kong `/d365fo` -> SimsQas-gateway -> fo-gateway (:180) -> F&O UAT. Works without any new IIS rule.\n\nExpected: 200 and a `WorkOrderOutbound_Result`."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const t = pm.response.text();",
+									"pm.test('fo-gateway answered WorkOrderOutbound', function () {",
+									"    pm.expect(t).to.match(/WorkOrderOutbound(_Result|Response)/);",
+									"});",
+									"if (/HEADER node not found/i.test(t)) {",
+									"    pm.test('fo-gateway could not find ns2:HEADER in the body', function () { pm.expect.fail('body format'); });",
+									"}",
+									"const type = (t.match(/<(?:\\w+:)?TYPE[^>]*>([^<]*)</) || [])[1];",
+									"const msg = (t.match(/<(?:\\w+:)?MESSAGE[^>]*>([^<]*)</) || [])[1];",
+									"pm.test(`F&O result: TYPE=${type || '-'}${msg ? ' | ' + msg.slice(0, 120) : ''}`, function () {});",
+									"pm.test('F&O accepted the order (TYPE=S)', function () {",
+									"    pm.expect(type, 'TYPE in response (MESSAGE: ' + (msg || '-') + ')').to.eql('S');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Work Order to F&O UAT via IIS -> Kong /d365fo",
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							},
+							{
+								"key": "SOAPAction",
+								"value": "\"urn:microsoft-dynamics-schemas/codeunit/SAPWS:WorkOrderOutbound\""
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\"><SOAP:Header/><SOAP:Body><ns1:WorkOrderOutbound xmlns:ns1=\"urn:microsoft-dynamics-schemas/codeunit/SAPWS\"><ns1:workOrderOutboundXML><ns2:HEADER xmlns:ns2=\"urn:microsoft-dynamics-nav/xmlports/x50003\">\n                    <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                    <ns2:CUSTOMER>0509595308</ns2:CUSTOMER>\n                    <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                    <ns2:ORDER_TYPE>ZC04</ns2:ORDER_TYPE>\n                    <ns2:AUARTTEXT>Placement Order</ns2:AUARTTEXT>\n                    <ns2:PLANPLANT>9317</ns2:PLANPLANT>\n                    <ns2:MN_WK_CTR>W33</ns2:MN_WK_CTR>\n                    <ns2:PLANT>9317</ns2:PLANT>\n                    <ns2:PMACTTYPE>PCC</ns2:PMACTTYPE>\n                    <ns2:ILATX>Placement Connectivity</ns2:ILATX>\n                    <ns2:PLANGROUP>033</ns2:PLANGROUP>\n                    <ns2:EQUIPMENT />\n                    <ns2:EQKTX />\n                    <ns2:INBDT />\n                    <ns2:CDECODE />\n                    <ns2:ASSEMBLY>000000000040000189</ns2:ASSEMBLY>\n                    <ns2:OBJECTTYPE>TCO</ns2:OBJECTTYPE>\n                    <ns2:MAINTPLANT />\n                    <ns2:PRODUCTION_START_DATE>2025-01-04</ns2:PRODUCTION_START_DATE>\n                    <ns2:PRODUCTION_FINISH_DATE>2025-01-04</ns2:PRODUCTION_FINISH_DATE>\n                    <ns2:PRODUCTION_START_TIME>00:00:00</ns2:PRODUCTION_START_TIME>\n                    <ns2:PRODUCTION_FINISH_TIME>00:00:00</ns2:PRODUCTION_FINISH_TIME>\n                    <ns2:USERSTATUS>EXSV INIT</ns2:USERSTATUS>\n                    <ns2:SHORT_TEXT>Install Cooler/5 - Develop Indirect Outl</ns2:SHORT_TEXT>\n                    <ns2:MATERIAL />\n                    <ns2:SERIALNO />\n                    <ns2:COMP_CODE>9190</ns2:COMP_CODE>\n                    <ns2:PROFIT_CTR>9190222002</ns2:PROFIT_CTR>\n                    <ns2:CO_AREA>TH00</ns2:CO_AREA>\n                    <ns2:RESPCCTR>9190222002</ns2:RESPCCTR>\n                    <ns2:WBS_ELEM />\n                    <ns2:PROJ_DEF />\n                    <ns2:LOC_COMP_CODE>9190</ns2:LOC_COMP_CODE>\n                    <ns2:LOC_CO_AREA>TH00</ns2:LOC_CO_AREA>\n                    <ns2:ASSET_NO />\n                    <ns2:SUB_NUMBER />\n                    <ns2:COSTCENTER />\n                    <ns2:SALESORG />\n                    <ns2:DISTR_CHAN />\n                    <ns2:DIVISION />\n                    <ns2:ACTUAL_START_DATE />\n                    <ns2:ACTUAL_FINISH_DATE />\n                    <ns2:ACTUAL_START_TIME>00:00:00</ns2:ACTUAL_START_TIME>\n                    <ns2:ACTUAL_FINISH_TIME>00:00:00</ns2:ACTUAL_FINISH_TIME>\n                    <ns2:REFDATE>2025-01-04</ns2:REFDATE>\n                    <ns2:SALES_ORD />\n                    <ns2:ENTERED_BY>PIUSER_HTTP</ns2:ENTERED_BY>\n                    <ns2:ENTER_DATE>2024-10-02</ns2:ENTER_DATE>\n                    <ns2:CHANGED_BY>64000952</ns2:CHANGED_BY>\n                    <ns2:CHANGE_DATE>2025-01-20</ns2:CHANGE_DATE>\n                    <ns2:SYS_STATUS>REL PRT MANC NMAT PRC</ns2:SYS_STATUS>\n                    <ns2:ROUTING_NO>1003998008</ns2:ROUTING_NO>\n                    <ns2:EQ_MODEL>COOLER SRCL400R with connectivity</ns2:EQ_MODEL>\n                    <ns2:SERVICE_TIME>0</ns2:SERVICE_TIME>\n                    <ns2:OPERATIONS>\n                        <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                        <ns2:ACTIVITY>0010</ns2:ACTIVITY>\n                        <ns2:CONTROL_KEY>PM07</ns2:CONTROL_KEY>\n                        <ns2:WORK_CNTR>W33</ns2:WORK_CNTR>\n                        <ns2:PLANT>9317</ns2:PLANT>\n                        <ns2:DESCRIPTION>Install Cooler/5 - Develop Indirect Outl</ns2:DESCRIPTION>\n                        <ns2:NUMBER_OF_CAPACITIES>0</ns2:NUMBER_OF_CAPACITIES>\n                        <ns2:ACTTYPE />\n                        <ns2:DURATION_NORMAL>0.0</ns2:DURATION_NORMAL>\n                        <ns2:DURATION_NORMAL_UNIT>MIN</ns2:DURATION_NORMAL_UNIT>\n                        <ns2:WORK_ACTIVITY>0.0</ns2:WORK_ACTIVITY>\n                        <ns2:UN_WORK>MIN</ns2:UN_WORK>\n                        <ns2:CONF_NO>0023392001</ns2:CONF_NO>\n                        <ns2:WORK_ACTUAL>0.000</ns2:WORK_ACTUAL>\n                        <ns2:ACT_START_DATE />\n                        <ns2:ACT_START_TIME>00:00:00</ns2:ACT_START_TIME>\n                        <ns2:ACT_END_DATE />\n                        <ns2:ACT_END_TIME>00:00:00</ns2:ACT_END_TIME>\n                    </ns2:OPERATIONS>\n                    <ns2:COMPONENTS>\n                        <ns2:ORDERID />\n                        <ns2:RESERV_NO />\n                        <ns2:RES_ITEM />\n                        <ns2:MOVEMENT />\n                        <ns2:WITHDRAWN />\n                        <ns2:MATERIAL />\n                        <ns2:PLANT />\n                        <ns2:STGE_LOC />\n                        <ns2:BATCH />\n                        <ns2:GL_ACCOUNT />\n                        <ns2:ITEM_CAT />\n                        <ns2:ITEM_NUMBER />\n                        <ns2:ACTIVITY />\n                        <ns2:PRICE />\n                        <ns2:PRICE_UNIT />\n                        <ns2:PUR_GROUP />\n                        <ns2:MATL_GROUP />\n                        <ns2:MATL_DESC />\n                        <ns2:REQUIREMENT_QUANTITY />\n                        <ns2:REQUIREMENT_QUANTITY_UNIT />\n                        <ns2:REQ_DATE />\n                        <ns2:REQ_TIME />\n                        <ns2:MOVE_TYPE />\n                        <ns2:COMMITED_QUAN />\n                        <ns2:WARRANTY_CHECK />\n                    </ns2:COMPONENTS>\n                    <ns2:CUSTOMERS>\n                        <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                        <ns2:CUSTOMER>0509595308</ns2:CUSTOMER>\n                        <ns2:CUST_NAME>TEST CUSTOMER</ns2:CUST_NAME>\n                        <ns2:BUILDING>1</ns2:BUILDING>\n                        <ns2:NAME_CO />\n                        <ns2:STREET>TEST</ns2:STREET>\n                        <ns2:CITY1>บุรีรัมย์</ns2:CITY1>\n                        <ns2:CITY2>อำเภอประโคนชัย</ns2:CITY2>\n                        <ns2:REGION>04</ns2:REGION>\n                        <ns2:POST_CODE>31140</ns2:POST_CODE>\n                        <ns2:TEL_NUMBER>0000000000</ns2:TEL_NUMBER>\n                        <ns2:COUNTRY>THX</ns2:COUNTRY>\n                        <ns2:LOCATION_CODE />\n                        <ns2:TRADENAME>6999</ns2:TRADENAME>\n                        <ns2:TRADDESCP>T-Trade</ns2:TRADDESCP>\n                        <ns2:CUSTOMER_CLASS>C1</ns2:CUSTOMER_CLASS>\n                        <ns2:VTEXT>New</ns2:VTEXT>\n                        <ns2:KEYACCOUNT />\n                        <ns2:LONGITUDE>100.500000000000</ns2:LONGITUDE>\n                        <ns2:LATITUDE>13.750000000000</ns2:LATITUDE>\n                        <ns2:BRSCH>9305</ns2:BRSCH>\n                        <ns2:BRTXT />\n                        <ns2:MON_MOR_FROM>000000</ns2:MON_MOR_FROM>\n                        <ns2:MON_MOR_TO>000000</ns2:MON_MOR_TO>\n                        <ns2:MON_EVEN_FROM>000000</ns2:MON_EVEN_FROM>\n                        <ns2:MON_EVEN_TO>000000</ns2:MON_EVEN_TO>\n                        <ns2:TUE_MOR_FROM>000000</ns2:TUE_MOR_FROM>\n                        <ns2:TUE_MOR_TO>000000</ns2:TUE_MOR_TO>\n                        <ns2:TUE_EVEN_FROM>000000</ns2:TUE_EVEN_FROM>\n                        <ns2:TUE_EVEN_TO>000000</ns2:TUE_EVEN_TO>\n                        <ns2:WED_MOR_FROM>000000</ns2:WED_MOR_FROM>\n                        <ns2:WED_MOR_TO>000000</ns2:WED_MOR_TO>\n                        <ns2:WED_EVEN_FROM>000000</ns2:WED_EVEN_FROM>\n                        <ns2:WED_EVEN_TO>000000</ns2:WED_EVEN_TO>\n                        <ns2:THU_MOR_FROM>000000</ns2:THU_MOR_FROM>\n                        <ns2:THU_MOR_TO>000000</ns2:THU_MOR_TO>\n                        <ns2:THU_EVEN_FROM>000000</ns2:THU_EVEN_FROM>\n                        <ns2:THU_EVEN_TO>000000</ns2:THU_EVEN_TO>\n                        <ns2:FRI_MOR_FROM>000000</ns2:FRI_MOR_FROM>\n                        <ns2:FRI_MOR_TO>000000</ns2:FRI_MOR_TO>\n                        <ns2:FRI_EVEN_FROM>000000</ns2:FRI_EVEN_FROM>\n                        <ns2:FRI_EVEN_TO>000000</ns2:FRI_EVEN_TO>\n                        <ns2:SAT_MOR_FROM>000000</ns2:SAT_MOR_FROM>\n                        <ns2:SAT_MOR_TO>000000</ns2:SAT_MOR_TO>\n                        <ns2:SAT_EVEN_FROM>000000</ns2:SAT_EVEN_FROM>\n                        <ns2:SAT_EVEN_TO>000000</ns2:SAT_EVEN_TO>\n                        <ns2:SUN_MOR_FROM>000000</ns2:SUN_MOR_FROM>\n                        <ns2:SUN_MOR_TO>000000</ns2:SUN_MOR_TO>\n                        <ns2:SUN_EVEN_FROM>000000</ns2:SUN_EVEN_FROM>\n                        <ns2:SUN_EVEN_TO>000000</ns2:SUN_EVEN_TO>\n                    </ns2:CUSTOMERS>\n                    <ns2:NOTIFICATION>\n                        <ns2:NOTIFICATIONHEADER>\n                            <ns2:ORDERID>{{orderId}}</ns2:ORDERID>\n                            <ns2:NOTIF_TYPE>Z6</ns2:NOTIF_TYPE>\n                            <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                            <ns2:NOTIF_DATE>2024-09-19</ns2:NOTIF_DATE>\n                            <ns2:NOTIF_TIME>16:43:18</ns2:NOTIF_TIME>\n                            <ns2:NOTIF_INCIDENT>IN2410-00260</ns2:NOTIF_INCIDENT>\n                            <ns2:ZZRF_INCIDENT />\n                            <ns2:ZZPROJECT />\n                            <ns2:NOTIF_CODEGROUP>INSTALL1</ns2:NOTIF_CODEGROUP>\n                            <ns2:NOTIF_CODE>IN01</ns2:NOTIF_CODE>\n                            <ns2:NOTIF_CODE_TEXT>ติดตั้ง (OM ใหม่)</ns2:NOTIF_CODE_TEXT>\n                            <ns2:NOTIF_REPORT_BY>45090387</ns2:NOTIF_REPORT_BY>\n                            <ns2:NOTIF_LONGTEXT>Test work order</ns2:NOTIF_LONGTEXT>\n                            <ns2:ZZFIRST />\n                            <ns2:ZZFIRST_SET />\n                            <ns2:ZZPREFERDATE>2024-10-05</ns2:ZZPREFERDATE>\n                            <ns2:NOTIF_EQUIPMENT />\n                        </ns2:NOTIFICATIONHEADER>\n                        <ns2:FIRSTORDER>\n                            <ns2:NOTIF_NO />\n                            <ns2:ITEM_KEY />\n                            <ns2:MATERIAL />\n                            <ns2:DESCRIPT />\n                            <ns2:QUANTITY />\n                            <ns2:TEXT />\n                        </ns2:FIRSTORDER>\n                        <ns2:DOCUMENT>\n                            <ns2:NOTIF_NO>000032572225</ns2:NOTIF_NO>\n                            <ns2:DOC_TYPE>TDC</ns2:DOC_TYPE>\n                            <ns2:DOC_NO>0000000000000010005218821</ns2:DOC_NO>\n                            <ns2:DOC_URL>http://tpwk2app03/CAMAttachment/?fid=10540369</ns2:DOC_URL>\n                        </ns2:DOCUMENT>\n                        <ns2:CATALOGPROFILE>\n                            <ns2:NOTIF_NO />\n                            <ns2:PROBLEM_CODEGROUP />\n                            <ns2:PROBLEM_CODE />\n                            <ns2:DAMAGE_CODEGROUP />\n                            <ns2:DAMAGE_CODE />\n                            <ns2:DAMAGE_TEXT />\n                            <ns2:CAUSE_CODEGROUP />\n                            <ns2:CAUSE_CODE />\n                            <ns2:CAUSE_TEXT />\n                            <ns2:ACTIVITY_CODEGROUP />\n                            <ns2:ACTIVITY_CODE />\n                            <ns2:ACTIVITY_TEXT />\n                        </ns2:CATALOGPROFILE>\n                    </ns2:NOTIFICATION>\n                    <ns2:HISTORY>\n                        <ns2:HISTORYORDER>\n                            <ns2:ORDERID />\n                            <ns2:ORDERID_HISTORY />\n                            <ns2:CUSTOMER />\n                            <ns2:NOTIF_NO />\n                            <ns2:NOTIF_LONGTEXT />\n                            <ns2:ORDER_TYPE />\n                            <ns2:NOTIF_DATE />\n                            <ns2:NOTIF_TIME />\n                            <ns2:NOTIF_INCIDENT />\n                            <ns2:EQUIPMENT />\n                            <ns2:NOTIF_CODEGROUP />\n                            <ns2:NOTIF_CODE />\n                            <ns2:NOTIF_CODE_TEXT />\n                            <ns2:NOTIF_OBJPART_CODEGROUP />\n                            <ns2:NOTIF_OBJPART_CODE />\n                            <ns2:NOTIF_OBJPART_TEXT />\n                            <ns2:NOTIF_PROBLEM_CODEGROUP />\n                            <ns2:NOTIF_PROBLEM_CODEG />\n                            <ns2:NOTIF_PROBLEM_TEXT />\n                            <ns2:NOTIF_CAUSE_CODEGROUP />\n                            <ns2:NOTIF_CAUSE_CODE />\n                            <ns2:NOTIF_CAUSE_TEXT />\n                            <ns2:NOTIF_ACT_CODEGROUP />\n                            <ns2:NOTIF_ACT_CODE />\n                            <ns2:NOTIF_ACT_TEXT />\n                        </ns2:HISTORYORDER>\n                        <ns2:HISTORYSPAREPART>\n                            <ns2:ORDERID />\n                            <ns2:ORDERID_HISTORY />\n                            <ns2:MATERIAL />\n                            <ns2:MATL_DESC />\n                            <ns2:QUANTITY />\n                            <ns2:UNIT />\n                        </ns2:HISTORYSPAREPART>\n                    </ns2:HISTORY>\n                <ns2:START_MA /><ns2:MA_MONTH /><ns2:ASSET_END_WARRANTY_DATE /><ns2:WORKORDER_WARRANTY /><ns2:COMPRESSOR_WARRANTY /></ns2:HEADER>\n            </ns1:workOrderOutboundXML></ns1:WorkOrderOutbound></SOAP:Body></SOAP:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{iisGatewayUrl}}/d365fo/D365FoService.svc",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"d365fo",
+								"D365FoService.svc"
+							]
+						},
+						"description": "Target design: SAP -> SimsQas-gateway -> Kong `/d365fo` -> SimsQas-gateway -> fo-gateway -> F&O UAT. Kong strips `/d365fo` (strip_path=true), so the second pass through IIS falls to the `(.*)` rule. The IIS rule matches only `d365fo/D365FoService.svc` and ignores requests coming from Kong, so a path like `/d365fo/d365fo/...` cannot bounce between IIS and Kong.\n\nNeeds IIS rule `sap-to-fo-uat` (see collection description). Expected: 200, hop test IIS=yes and Kong=yes."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const t = pm.response.text();",
+									"pm.test('fo-gateway answered WorkOrderOutbound', function () {",
+									"    pm.expect(t).to.match(/WorkOrderOutbound(_Result|Response)/);",
+									"});",
+									"if (/HEADER node not found/i.test(t)) {",
+									"    pm.test('fo-gateway could not find ns2:HEADER in the body', function () { pm.expect.fail('body format'); });",
+									"}",
+									"const type = (t.match(/<(?:\\w+:)?TYPE[^>]*>([^<]*)</) || [])[1];",
+									"const msg = (t.match(/<(?:\\w+:)?MESSAGE[^>]*>([^<]*)</) || [])[1];",
+									"pm.test(`F&O result: TYPE=${type || '-'}${msg ? ' | ' + msg.slice(0, 120) : ''}`, function () {});",
+									"pm.test('F&O accepted the order (TYPE=S)', function () {",
+									"    pm.expect(type, 'TYPE in response (MESSAGE: ' + (msg || '-') + ')').to.eql('S');",
+									"});",
+									"const xpb = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'x-powered-by').map(h => h.value).join(', ');",
+									"const viaIIS = /ARR/i.test(xpb);",
+									"const viaKong = ['X-Kong-Upstream-Latency', 'X-Kong-Proxy-Latency', 'X-Kong-Response-Latency'].some(h => pm.response.headers.has(h))",
+									"    || /kong/i.test(pm.response.headers.get('Via') || '') || /kong/i.test(pm.response.headers.get('Server') || '');",
+									"if (pm.response.code === 404 && viaIIS && !viaKong) {",
+									"    pm.test('IIS has no sap-to-fo-uat rule yet (request fell through to fo-gateway)', function () {",
+									"        pm.expect.fail('add the sap-to-fo-uat rule above the (.*) rule');",
+									"    });",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "SAP to SIMS (via IIS gateway)",
+			"description": "Simulates SAP PI QAS sending a service order: SAP -> SimsQas-gateway (`fo-gateway.bevproasia.com`) -> Kong `/sims-uat` -> SIMS UAT.\n\nIIS rule `sap-to-sims-uat` is active (verified 2026-10-30). Writes to SIMS UAT.",
+			"auth": {
+				"type": "basic",
+				"basic": [
+					{
+						"key": "username",
+						"value": "{{simsUsername}}",
+						"type": "string"
+					},
+					{
+						"key": "password",
+						"value": "{{simsPassword}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Submit Service Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const type = (pm.response.text().match(/<TYPE[^>]*>([^<]*)<\\/TYPE>/) || [])[1];",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('TYPE is S', function () {",
+									"    pm.expect(type).to.equal('S');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							},
+							{
+								"key": "X-DataArea-Id",
+								"value": "{{dataAreaId}}"
+							},
+							{
+								"key": "X-Idempotency-Key",
+								"value": "{{$guid}}"
+							},
+							{
+								"key": "X-Correlation-Id",
+								"value": "{{$guid}}"
+							}
+						],
+						"url": {
+							"raw": "{{iisGatewayUrl}}/sims-uat/api/v1/integrations/sap/service-orders",
+							"host": [
+								"{{iisGatewayUrl}}"
+							],
+							"path": [
+								"sims-uat",
+								"api",
+								"v1",
+								"integrations",
+								"sap",
+								"service-orders"
+							]
+						},
+						"description": "Sends SVC_SAP_SIMS_UAT credentials and writes to SIMS UAT. Stop after a 401.\n\nCreates or updates service order `{{orderId}}` in SIMS UAT.\n\nExpected: 200 with `TYPE` = `S`.",
+						"body": {
+							"mode": "raw",
+							"raw": "<Soap:Envelope xmlns:Soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\n    <Soap:Body>\n        <WorkOrderOutbound_Result xmlns=\"urn:microsoft-dynamics-schemas/codeunit/SAPWSPI\">\n            <workOrderOutboundXML>\n                <ORDERID xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">{{orderId}}</ORDERID>\n                <TYPE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">S</TYPE>\n                <MESSAGE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\" />\n                <ZZNAV_NUMBER xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">NAV241228157</ZZNAV_NUMBER>\n                <ZZNAV_CRTD_DATE xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">2025-01-20</ZZNAV_CRTD_DATE>\n                <ZZNAV_CRTD_TIME xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">195139</ZZNAV_CRTD_TIME>\n                <HEADER xmlns=\"urn:microsoft-dynamics-nav/xmlports/x50003\">\n                    <ORDERID>{{orderId}}</ORDERID>\n                    <CUSTOMER>0509595308</CUSTOMER>\n                    <NOTIF_NO>000032572225</NOTIF_NO>\n                    <ORDER_TYPE>ZC04</ORDER_TYPE>\n                    <AUARTTEXT>Placement Order</AUARTTEXT>\n                    <PLANPLANT>9317</PLANPLANT>\n                    <MN_WK_CTR>W33</MN_WK_CTR>\n                    <PLANT>9317</PLANT>\n                    <PMACTTYPE>PCC</PMACTTYPE>\n                    <ILATX>Placement Connectivity</ILATX>\n                    <PLANGROUP>033</PLANGROUP>\n                    <EQUIPMENT />\n                    <EQKTX />\n                    <INBDT />\n                    <CDECODE />\n                    <ASSEMBLY>000000000040000189</ASSEMBLY>\n                    <OBJECTTYPE>TCO</OBJECTTYPE>\n                    <MAINTPLANT />\n                    <PRODUCTION_START_DATE>2025-01-04</PRODUCTION_START_DATE>\n                    <PRODUCTION_FINISH_DATE>2025-01-04</PRODUCTION_FINISH_DATE>\n                    <PRODUCTION_START_TIME>00:00:00</PRODUCTION_START_TIME>\n                    <PRODUCTION_FINISH_TIME>00:00:00</PRODUCTION_FINISH_TIME>\n                    <USERSTATUS>EXSV INIT</USERSTATUS>\n                    <SHORT_TEXT>Install Cooler/5 - Develop Indirect Outl</SHORT_TEXT>\n                    <MATERIAL />\n                    <SERIALNO />\n                    <COMP_CODE>9190</COMP_CODE>\n                    <PROFIT_CTR>9190222002</PROFIT_CTR>\n                    <CO_AREA>TH00</CO_AREA>\n                    <RESPCCTR>9190222002</RESPCCTR>\n                    <WBS_ELEM />\n                    <PROJ_DEF />\n                    <LOC_COMP_CODE>9190</LOC_COMP_CODE>\n                    <LOC_CO_AREA>TH00</LOC_CO_AREA>\n                    <ASSET_NO />\n                    <SUB_NUMBER />\n                    <COSTCENTER />\n                    <SALESORG />\n                    <DISTR_CHAN />\n                    <DIVISION />\n                    <ACTUAL_START_DATE />\n                    <ACTUAL_FINISH_DATE />\n                    <ACTUAL_START_TIME>00:00:00</ACTUAL_START_TIME>\n                    <ACTUAL_FINISH_TIME>00:00:00</ACTUAL_FINISH_TIME>\n                    <REFDATE>2025-01-04</REFDATE>\n                    <SALES_ORD />\n                    <ENTERED_BY>PIUSER_HTTP</ENTERED_BY>\n                    <ENTER_DATE>2024-10-02</ENTER_DATE>\n                    <CHANGED_BY>64000952</CHANGED_BY>\n                    <CHANGE_DATE>2025-01-20</CHANGE_DATE>\n                    <SYS_STATUS>REL PRT MANC NMAT PRC</SYS_STATUS>\n                    <ROUTING_NO>1003998008</ROUTING_NO>\n                    <EQ_MODEL>COOLER SRCL400R with connectivity</EQ_MODEL>\n                    <SERVICE_TIME>0</SERVICE_TIME>\n                    <OPERATIONS>\n                        <ORDERID>{{orderId}}</ORDERID>\n                        <ACTIVITY>0010</ACTIVITY>\n                        <CONTROL_KEY>PM07</CONTROL_KEY>\n                        <WORK_CNTR>W33</WORK_CNTR>\n                        <PLANT>9317</PLANT>\n                        <DESCRIPTION>Install Cooler/5 - Develop Indirect Outl</DESCRIPTION>\n                        <NUMBER_OF_CAPACITIES>0</NUMBER_OF_CAPACITIES>\n                        <ACTTYPE />\n                        <DURATION_NORMAL>0.0</DURATION_NORMAL>\n                        <DURATION_NORMAL_UNIT>MIN</DURATION_NORMAL_UNIT>\n                        <WORK_ACTIVITY>0.0</WORK_ACTIVITY>\n                        <UN_WORK>MIN</UN_WORK>\n                        <CONF_NO>0023392001</CONF_NO>\n                        <WORK_ACTUAL>0.000</WORK_ACTUAL>\n                        <ACT_START_DATE />\n                        <ACT_START_TIME>00:00:00</ACT_START_TIME>\n                        <ACT_END_DATE />\n                        <ACT_END_TIME>00:00:00</ACT_END_TIME>\n                    </OPERATIONS>\n                    <COMPONENTS>\n                        <ORDERID />\n                        <RESERV_NO />\n                        <RES_ITEM />\n                        <MOVEMENT />\n                        <WITHDRAWN />\n                        <MATERIAL />\n                        <PLANT />\n                        <STGE_LOC />\n                        <BATCH />\n                        <GL_ACCOUNT />\n                        <ITEM_CAT />\n                        <ITEM_NUMBER />\n                        <ACTIVITY />\n                        <PRICE />\n                        <PRICE_UNIT />\n                        <PUR_GROUP />\n                        <MATL_GROUP />\n                        <MATL_DESC />\n                        <REQUIREMENT_QUANTITY />\n                        <REQUIREMENT_QUANTITY_UNIT />\n                        <REQ_DATE />\n                        <REQ_TIME />\n                        <MOVE_TYPE />\n                        <COMMITED_QUAN />\n                        <WARRANTY_CHECK />\n                    </COMPONENTS>\n                    <CUSTOMERS>\n                        <ORDERID>{{orderId}}</ORDERID>\n                        <CUSTOMER>0509595308</CUSTOMER>\n                        <CUST_NAME>TEST CUSTOMER</CUST_NAME>\n                        <BUILDING>1</BUILDING>\n                        <NAME_CO></NAME_CO>\n                        <STREET>TEST</STREET>\n                        <CITY1>บุรีรัมย์</CITY1>\n                        <CITY2>อำเภอประโคนชัย</CITY2>\n                        <REGION>04</REGION>\n                        <POST_CODE>31140</POST_CODE>\n                        <TEL_NUMBER>0000000000</TEL_NUMBER>\n                        <COUNTRY>THX</COUNTRY>\n                        <LOCATION_CODE />\n                        <TRADENAME>6999</TRADENAME>\n                        <TRADDESCP>T-Trade</TRADDESCP>\n                        <CUSTOMER_CLASS>C1</CUSTOMER_CLASS>\n                        <VTEXT>New</VTEXT>\n                        <KEYACCOUNT />\n                        <LONGITUDE>100.500000000000</LONGITUDE>\n                        <LATITUDE>13.750000000000</LATITUDE>\n                        <BRSCH>9305</BRSCH>\n                        <BRTXT></BRTXT>\n                        <MON_MOR_FROM>000000</MON_MOR_FROM>\n                        <MON_MOR_TO>000000</MON_MOR_TO>\n                        <MON_EVEN_FROM>000000</MON_EVEN_FROM>\n                        <MON_EVEN_TO>000000</MON_EVEN_TO>\n                        <TUE_MOR_FROM>000000</TUE_MOR_FROM>\n                        <TUE_MOR_TO>000000</TUE_MOR_TO>\n                        <TUE_EVEN_FROM>000000</TUE_EVEN_FROM>\n                        <TUE_EVEN_TO>000000</TUE_EVEN_TO>\n                        <WED_MOR_FROM>000000</WED_MOR_FROM>\n                        <WED_MOR_TO>000000</WED_MOR_TO>\n                        <WED_EVEN_FROM>000000</WED_EVEN_FROM>\n                        <WED_EVEN_TO>000000</WED_EVEN_TO>\n                        <THU_MOR_FROM>000000</THU_MOR_FROM>\n                        <THU_MOR_TO>000000</THU_MOR_TO>\n                        <THU_EVEN_FROM>000000</THU_EVEN_FROM>\n                        <THU_EVEN_TO>000000</THU_EVEN_TO>\n                        <FRI_MOR_FROM>000000</FRI_MOR_FROM>\n                        <FRI_MOR_TO>000000</FRI_MOR_TO>\n                        <FRI_EVEN_FROM>000000</FRI_EVEN_FROM>\n                        <FRI_EVEN_TO>000000</FRI_EVEN_TO>\n                        <SAT_MOR_FROM>000000</SAT_MOR_FROM>\n                        <SAT_MOR_TO>000000</SAT_MOR_TO>\n                        <SAT_EVEN_FROM>000000</SAT_EVEN_FROM>\n                        <SAT_EVEN_TO>000000</SAT_EVEN_TO>\n                        <SUN_MOR_FROM>000000</SUN_MOR_FROM>\n                        <SUN_MOR_TO>000000</SUN_MOR_TO>\n                        <SUN_EVEN_FROM>000000</SUN_EVEN_FROM>\n                        <SUN_EVEN_TO>000000</SUN_EVEN_TO>\n                    </CUSTOMERS>\n                    <NOTIFICATION>\n                        <NOTIFICATIONHEADER>\n                            <ORDERID>{{orderId}}</ORDERID>\n                            <NOTIF_TYPE>Z6</NOTIF_TYPE>\n                            <NOTIF_NO>000032572225</NOTIF_NO>\n                            <NOTIF_DATE>2024-09-19</NOTIF_DATE>\n                            <NOTIF_TIME>16:43:18</NOTIF_TIME>\n                            <NOTIF_INCIDENT>IN2410-00260</NOTIF_INCIDENT>\n                            <ZZRF_INCIDENT />\n                            <ZZPROJECT />\n                            <NOTIF_CODEGROUP>INSTALL1</NOTIF_CODEGROUP>\n                            <NOTIF_CODE>IN01</NOTIF_CODE>\n                            <NOTIF_CODE_TEXT>ติดตั้ง (OM ใหม่)</NOTIF_CODE_TEXT>\n                            <NOTIF_REPORT_BY>45090387</NOTIF_REPORT_BY>\n                            <NOTIF_LONGTEXT>Test work order</NOTIF_LONGTEXT>\n                            <ZZFIRST />\n                            <ZZFIRST_SET />\n                            <ZZPREFERDATE>2024-10-05</ZZPREFERDATE>\n                            <NOTIF_EQUIPMENT />\n                        </NOTIFICATIONHEADER>\n                        <FIRSTORDER>\n                            <NOTIF_NO />\n                            <ITEM_KEY />\n                            <MATERIAL />\n                            <DESCRIPT />\n                            <QUANTITY />\n                            <TEXT />\n                        </FIRSTORDER>\n                        <DOCUMENT>\n                            <NOTIF_NO>000032572225</NOTIF_NO>\n                            <DOC_TYPE>TDC</DOC_TYPE>\n                            <DOC_NO>0000000000000010005218821</DOC_NO>\n                            <DOC_URL>http://tpwk2app03/CAMAttachment/?fid=10540369</DOC_URL>\n                        </DOCUMENT>\n                        <CATALOGPROFILE>\n                            <NOTIF_NO />\n                            <PROBLEM_CODEGROUP />\n                            <PROBLEM_CODE />\n                            <DAMAGE_CODEGROUP />\n                            <DAMAGE_CODE />\n                            <DAMAGE_TEXT />\n                            <CAUSE_CODEGROUP />\n                            <CAUSE_CODE />\n                            <CAUSE_TEXT />\n                            <ACTIVITY_CODEGROUP />\n                            <ACTIVITY_CODE />\n                            <ACTIVITY_TEXT />\n                        </CATALOGPROFILE>\n                    </NOTIFICATION>\n                    <HISTORY>\n                        <HISTORYORDER>\n                            <ORDERID />\n                            <ORDERID_HISTORY />\n                            <CUSTOMER />\n                            <NOTIF_NO />\n                            <NOTIF_LONGTEXT />\n                            <ORDER_TYPE />\n                            <NOTIF_DATE />\n                            <NOTIF_TIME />\n                            <NOTIF_INCIDENT />\n                            <EQUIPMENT />\n                            <NOTIF_CODEGROUP />\n                            <NOTIF_CODE />\n                            <NOTIF_CODE_TEXT />\n                            <NOTIF_OBJPART_CODEGROUP />\n                            <NOTIF_OBJPART_CODE />\n                            <NOTIF_OBJPART_TEXT />\n                            <NOTIF_PROBLEM_CODEGROUP />\n                            <NOTIF_PROBLEM_CODEG />\n                            <NOTIF_PROBLEM_TEXT />\n                            <NOTIF_CAUSE_CODEGROUP />\n                            <NOTIF_CAUSE_CODE />\n                            <NOTIF_CAUSE_TEXT />\n                            <NOTIF_ACT_CODEGROUP />\n                            <NOTIF_ACT_CODE />\n                            <NOTIF_ACT_TEXT />\n                        </HISTORYORDER>\n                        <HISTORYSPAREPART>\n                            <ORDERID />\n                            <ORDERID_HISTORY />\n                            <MATERIAL />\n                            <MATL_DESC />\n                            <QUANTITY />\n                            <UNIT />\n                        </HISTORYSPAREPART>\n                    </HISTORY>\n                </HEADER>\n            </workOrderOutboundXML>\n        </WorkOrderOutbound_Result>\n    </Soap:Body>\n</Soap:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				}
+			],
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// Basic auth with an empty password still counts as a failed login, so strip credentials instead.",
+							"const reasons = [];",
+							"if (!pm.variables.get('simsPassword')) { reasons.push('simsPassword is empty: set its Current value in the collection Variables tab'); }",
+							"pm.variables.set('credsRemoved', reasons.join(' | '));",
+							"if (reasons.length) {",
+							"    try { pm.request.authorizeUsing('noauth'); }",
+							"    catch (e) { if (pm.execution && typeof pm.execution.skipRequest === 'function') { pm.execution.skipRequest(); } }",
+							"    console.warn('Credentials NOT sent: ' + reasons.join(' | '));",
+							"}"
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const credsRemoved = pm.variables.get('credsRemoved');",
+							"if (credsRemoved) {",
+							"    pm.test('CREDENTIALS NOT SENT: ' + credsRemoved, function () { pm.expect.fail(credsRemoved); });",
+							"}",
+							"const xpb = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'x-powered-by').map(h => h.value).join(', ');",
+							"const viaIIS = /ARR/i.test(xpb);",
+							"const viaKong = ['X-Kong-Upstream-Latency', 'X-Kong-Proxy-Latency', 'X-Kong-Response-Latency'].some(h => pm.response.headers.has(h))",
+							"    || /kong/i.test(pm.response.headers.get('Via') || '') || /kong/i.test(pm.response.headers.get('Server') || '');",
+							"pm.test('path: SAP -> IIS -> Kong -> SIMS', function () {",
+							"    pm.expect(viaIIS, 'IIS (ARR) not in the path').to.be.true;",
+							"    pm.expect(viaKong, 'Kong not in the path').to.be.true;",
+							"});",
+							"if (pm.response.code === 401 && !pm.variables.get('credsRemoved')) {",
+							"    // A 401 here is a failed login. Stop the runner so it is not repeated (SAP locks the user after ~5 failures).",
+							"    if (pm.execution && typeof pm.execution.setNextRequest === 'function') { pm.execution.setNextRequest(null); }",
+							"    else if (typeof postman !== 'undefined') { postman.setNextRequest(null); }",
+							"    pm.test('STOP: 401 = failed login. Do not resend; check the user and password first', function () {",
+							"        pm.expect.fail('401 Unauthorized');",
+							"    });",
+							"}"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "SIMS to SAP QAS (Kong -> IIS -> qbx)",
+			"description": "Simulates SIMS sending a work order update. The URL is the Kong URL SIMS already uses; the cut-over happens on Kong and IIS (see collection description).\n\nUses `SVC_NAV_QBX`. Stop after a 401: repeated failed logins lock the account. Each request creates a message in SAP PI QAS. Before the cut-over the path test fails because the request still goes Kong -> qbx directly.",
+			"auth": {
+				"type": "basic",
+				"basic": [
+					{
+						"key": "username",
+						"value": "{{sapUsername}}",
+						"type": "string"
+					},
+					{
+						"key": "password",
+						"value": "{{sapPassword}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Work Order Update (In Progress)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							}
+						],
+						"url": {
+							"raw": "{{gatewayUrl}}/sap-pi-uat/XISOAPAdapter/MessageServlet?senderService=sys_TNTLFTDNAVService&interface=WorkOrderUpdate_Out&interfaceNamespace=http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/",
+							"host": [
+								"{{gatewayUrl}}"
+							],
+							"path": [
+								"sap-pi-uat",
+								"XISOAPAdapter",
+								"MessageServlet"
+							],
+							"query": [
+								{
+									"key": "senderService",
+									"value": "sys_TNTLFTDNAVService"
+								},
+								{
+									"key": "interface",
+									"value": "WorkOrderUpdate_Out"
+								},
+								{
+									"key": "interfaceNamespace",
+									"value": "http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/"
+								}
+							]
+						},
+						"description": "Sends SVC_NAV_QBX credentials and creates a message in SAP PI QAS. Stop after a 401. A 500 from SAP is a data problem in the payload, not the network path.\n\nSends a work order update (`WorkOrderUpdate_Out`) to SAP PI.\n\nSample payload: in-progress order 000042970855 (`USERSTATUS` INPR, `FTD_INB_WORK_ORDER`). Expected: 200.",
+						"body": {
+							"mode": "raw",
+							"raw": "<soapenv:Envelope xmlns:sen=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header /><soapenv:Body><sen:FTD_INB_WORK_ORDER><IM_INB_ORDER><ORDERID>000042970855</ORDERID><NOTIF_NO>000033000243</NOTIF_NO><EQUIPMENT>BI-01004605</EQUIPMENT><PMACTTYPE>PME</PMACTTYPE><ZZMATNR>TBIB</ZZMATNR><ZZEQUIPMENT></ZZEQUIPMENT><ZZCDE_CODE></ZZCDE_CODE><ZZIMEI_CON_DEV></ZZIMEI_CON_DEV><ZZSIM_MOBILE_NO></ZZSIM_MOBILE_NO><ZZSIM_ICCID></ZZSIM_ICCID><ZZSIM_PROVIDER></ZZSIM_PROVIDER><ZZCON_DEV_TYPE></ZZCON_DEV_TYPE><ZZSV_AMT>0.00</ZZSV_AMT><ZZSP_AMT>0.00</ZZSP_AMT><ZZUSIS_REASON></ZZUSIS_REASON><ZZUSIS_REA_TEXT></ZZUSIS_REA_TEXT><CLOSE_K2_TEXT></CLOSE_K2_TEXT><SYS_STATUS></SYS_STATUS><USERSTATUS>INPR</USERSTATUS><ZZMOBILE_STATUS></ZZMOBILE_STATUS><ZZRP_APPROVE></ZZRP_APPROVE><ZZCUS_NAME></ZZCUS_NAME><DISTANCE>0</DISTANCE><OPERATIONS><item><ORDERID>000042970855</ORDERID><ACTIVITY>0010</ACTIVITY><CONF_NO>0</CONF_NO><DESCRIPTION>เวลาปฏิบัติงาน</DESCRIPTION><CONTROL_KEY></CONTROL_KEY><WORK_CNTR>BPTV058</WORK_CNTR><PLANT>8017</PLANT><WORK_ACTUAL>20</WORK_ACTUAL><UN_WORK></UN_WORK><ACTTYPE>Y20001</ACTTYPE><ACT_START_DATE></ACT_START_DATE><ACT_START_TIME>00:00:00</ACT_START_TIME><ACT_END_DATE></ACT_END_DATE><ACT_END_TIME>00:00:00</ACT_END_TIME><WORKER><item><ORDERID>000042970855</ORDERID><ACTIVITY>0010</ACTIVITY><PERSONNEL_NUMBER>99999999</PERSONNEL_NUMBER><NAME>Dummy_Resource</NAME></item></WORKER></item></OPERATIONS><COMPONENTS /><NOTIFICATION><ORDERID>000042970855</ORDERID><NOTIF_NO>000033000243</NOTIF_NO><NOTIF_CODEGROUP></NOTIF_CODEGROUP><NOTIF_CODE></NOTIF_CODE><NOTIF_CODE_TEXT></NOTIF_CODE_TEXT><EQUIPMENT_WORKABLE></EQUIPMENT_WORKABLE><CATALOG_CODE_ACTUAL /></NOTIFICATION><DOCUMENTS /></IM_INB_ORDER></sen:FTD_INB_WORK_ORDER></soapenv:Body></soapenv:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				},
+				{
+					"name": "Work Order Update (Repair Completed)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/xml; charset=utf-8"
+							}
+						],
+						"url": {
+							"raw": "{{gatewayUrl}}/sap-pi-uat/XISOAPAdapter/MessageServlet?senderService=sys_TNTLFTDNAVService&interface=WorkOrderUpdate_Out&interfaceNamespace=http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/",
+							"host": [
+								"{{gatewayUrl}}"
+							],
+							"path": [
+								"sap-pi-uat",
+								"XISOAPAdapter",
+								"MessageServlet"
+							],
+							"query": [
+								{
+									"key": "senderService",
+									"value": "sys_TNTLFTDNAVService"
+								},
+								{
+									"key": "interface",
+									"value": "WorkOrderUpdate_Out"
+								},
+								{
+									"key": "interfaceNamespace",
+									"value": "http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/"
+								}
+							]
+						},
+						"description": "Sends SVC_NAV_QBX credentials and creates a message in SAP PI QAS. Stop after a 401. A 500 from SAP is a data problem in the payload, not the network path.\n\nSends a work order update (`WorkOrderUpdate_Out`) to SAP PI.\n\nSample payload: completed repair order 000049042283 (`PMACTTYPE` CME, `USERSTATUS` FINS, `ZZMOBILE_STATUS` COMP, catalog codes in `CATALOG_CODE_ACTUAL`). Contains a technician name. Expected: 200.",
+						"body": {
+							"mode": "raw",
+							"raw": "<soapenv:Envelope xmlns:sen=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header /><soapenv:Body><sen:FTD_INB_WORK_ORDER><IM_INB_ORDER><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><EQUIPMENT>TNTC-65010</EQUIPMENT><PMACTTYPE>CME</PMACTTYPE><ZZMATNR>TFCB</ZZMATNR><ZZEQUIPMENT></ZZEQUIPMENT><ZZCDE_CODE></ZZCDE_CODE><ZZIMEI_CON_DEV></ZZIMEI_CON_DEV><ZZSIM_MOBILE_NO></ZZSIM_MOBILE_NO><ZZSIM_ICCID></ZZSIM_ICCID><ZZSIM_PROVIDER></ZZSIM_PROVIDER><ZZCON_DEV_TYPE></ZZCON_DEV_TYPE><ZZSV_AMT>0.00</ZZSV_AMT><ZZSP_AMT>0.00</ZZSP_AMT><ZZUSIS_REASON></ZZUSIS_REASON><ZZUSIS_REA_TEXT></ZZUSIS_REA_TEXT><CLOSE_K2_TEXT></CLOSE_K2_TEXT><SYS_STATUS></SYS_STATUS><USERSTATUS>FINS</USERSTATUS><ZZMOBILE_STATUS>COMP</ZZMOBILE_STATUS><ZZRP_APPROVE></ZZRP_APPROVE><ZZCUS_NAME></ZZCUS_NAME><DISTANCE>0</DISTANCE><OPERATIONS><item><ORDERID>000049042283</ORDERID><ACTIVITY>0010</ACTIVITY><CONF_NO>0</CONF_NO><DESCRIPTION>เวลาปฏิบัติงาน</DESCRIPTION><CONTROL_KEY></CONTROL_KEY><WORK_CNTR>NCLV155</WORK_CNTR><PLANT>8006</PLANT><WORK_ACTUAL>253</WORK_ACTUAL><UN_WORK></UN_WORK><ACTTYPE>Y20001</ACTTYPE><ACT_START_DATE>2026-07-14</ACT_START_DATE><ACT_START_TIME>10:07:00</ACT_START_TIME><ACT_END_DATE>2026-07-14</ACT_END_DATE><ACT_END_TIME>14:20:00</ACT_END_TIME><WORKER><item><ORDERID>000049042283</ORDERID><ACTIVITY>0010</ACTIVITY><PERSONNEL_NUMBER>91670021</PERSONNEL_NUMBER><NAME>อรรคเดช นาราช</NAME></item></WORKER></item></OPERATIONS><COMPONENTS /><NOTIFICATION><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><NOTIF_CODEGROUP>TFCB</NOTIF_CODEGROUP><NOTIF_CODE>F036</NOTIF_CODE><NOTIF_CODE_TEXT>เครื่องทำงานตลอด-TFCB-F036</NOTIF_CODE_TEXT><EQUIPMENT_WORKABLE></EQUIPMENT_WORKABLE><CATALOG_CODE_ACTUAL><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><POSNR>10</POSNR><PROBLEM_CODEGROUP>TFCB</PROBLEM_CODEGROUP><PROBLEM_CODE>C901</PROBLEM_CODE><DAMAGE_CODEGROUP>TFCB</DAMAGE_CODEGROUP><DAMAGE_CODE>D203</DAMAGE_CODE><DAMAGE_TEXT>หลอดไฟโลโก้ดับ</DAMAGE_TEXT><CAUSE_CODEGROUP>TFCB</CAUSE_CODEGROUP><CAUSE_CODE>C202</CAUSE_CODE><CAUSE_TEXT>Ballast ชำรุด หลอดไฟไม่ติด</CAUSE_TEXT><ACTIVITY_CODEGROUP>TFCB</ACTIVITY_CODEGROUP><ACTIVITY_CODE>A203</ACTIVITY_CODE><ACTIVITY_TEXT>เปลี่ยนอะไหล่ (เบิกทดแทน)</ACTIVITY_TEXT></item></CATALOG_CODE_ACTUAL></NOTIFICATION><DOCUMENTS><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196352689059857.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196204429867260.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196357261597000.jpg</DOC_URL></item><item><ORDERID>000049042283</ORDERID><NOTIF_NO>000031269248</NOTIF_NO><DOC_TYPE></DOC_TYPE><DOC_NO></DOC_NO><DOC_URL>https://pic.bevproasia.com/DisplayImage/Show/2026/07/49042283/000049042283_639196334272136845.jpg</DOC_URL></item></DOCUMENTS></IM_INB_ORDER></sen:FTD_INB_WORK_ORDER></soapenv:Body></soapenv:Envelope>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				}
+			],
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// Basic auth with an empty password still counts as a failed login, so strip credentials instead.",
+							"const reasons = [];",
+							"if (!pm.variables.get('sapPassword')) { reasons.push('sapPassword is empty: set its Current value in the collection Variables tab'); }",
+							"pm.variables.set('credsRemoved', reasons.join(' | '));",
+							"if (reasons.length) {",
+							"    try { pm.request.authorizeUsing('noauth'); }",
+							"    catch (e) { if (pm.execution && typeof pm.execution.skipRequest === 'function') { pm.execution.skipRequest(); } }",
+							"    console.warn('Credentials NOT sent: ' + reasons.join(' | '));",
+							"}"
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const credsRemoved = pm.variables.get('credsRemoved');",
+							"if (credsRemoved) {",
+							"    pm.test('CREDENTIALS NOT SENT: ' + credsRemoved, function () { pm.expect.fail(credsRemoved); });",
+							"}",
+							"const xpb = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'x-powered-by').map(h => h.value).join(', ');",
+							"const viaIIS = /ARR/i.test(xpb);",
+							"const viaKong = ['X-Kong-Upstream-Latency', 'X-Kong-Proxy-Latency', 'X-Kong-Response-Latency'].some(h => pm.response.headers.has(h))",
+							"    || /kong/i.test(pm.response.headers.get('Via') || '') || /kong/i.test(pm.response.headers.get('Server') || '');",
+							"pm.test('path: SIMS -> Kong -> IIS -> SAP', function () {",
+							"    pm.expect(viaIIS, 'IIS (ARR) not in the path').to.be.true;",
+							"    pm.expect(viaKong, 'Kong not in the path').to.be.true;",
+							"});",
+							"if (pm.response.code === 401 && !pm.variables.get('credsRemoved')) {",
+							"    // A 401 here is a failed login. Stop the runner so it is not repeated (SAP locks the user after ~5 failures).",
+							"    if (pm.execution && typeof pm.execution.setNextRequest === 'function') { pm.execution.setNextRequest(null); }",
+							"    else if (typeof postman !== 'undefined') { postman.setNextRequest(null); }",
+							"    pm.test('STOP: 401 = failed login. Do not resend; check the user and password first', function () {",
+							"        pm.expect.fail('401 Unauthorized');",
+							"    });",
+							"}"
+						]
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Info only: which hops answered (IIS adds X-Powered-By: ARR/3.0; Kong adds X-Kong-* / Via: kong).",
+					"const xpb = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'x-powered-by').map(h => h.value).join(', ');",
+					"const viaIIS = /ARR/i.test(xpb);",
+					"const viaKong = ['X-Kong-Upstream-Latency', 'X-Kong-Proxy-Latency', 'X-Kong-Response-Latency'].some(h => pm.response.headers.has(h))",
+					"    || /kong/i.test(pm.response.headers.get('Via') || '') || /kong/i.test(pm.response.headers.get('Server') || '');",
+					"pm.test(`hop: IIS=${viaIIS ? 'yes' : 'no'} | Kong=${viaKong ? 'yes' : 'no'}`, function () {});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "gatewayUrl",
+			"value": "https://bevprogateway.southeastasia.cloudapp.azure.com"
+		},
+		{
+			"key": "iisGatewayUrl",
+			"value": "https://fo-gateway.bevproasia.com",
+			"type": "string"
+		},
+		{
+			"key": "sapUsername",
+			"value": "SVC_NAV_QBX"
+		},
+		{
+			"key": "sapPassword",
+			"value": ""
+		},
+		{
+			"key": "simsUsername",
+			"value": "SVC_SAP_SIMS_UAT"
+		},
+		{
+			"key": "simsPassword",
+			"value": ""
+		},
+		{
+			"key": "dataAreaId",
+			"value": "BPA"
+		},
+		{
+			"key": "orderId",
+			"value": "000042544850"
+		}
+	]
+}

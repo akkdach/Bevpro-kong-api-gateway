@@ -85,8 +85,19 @@ def bars(pid, title, desc, sql, x, y, w, h, unit="short", stack=True, draw="bars
     }
 
 
-def table(pid, title, desc, sql, x, y, w, h, status_col="status", wide_cols=(), type_col=None, mid_cols=()):
+def table(pid, title, desc, sql, x, y, w, h, status_col="status", wide_cols=(), type_col=None, mid_cols=(),
+          drill_uid=None, drill_cols=()):
     overrides = []
+    if drill_uid:  # click a cell -> same dashboard in a new tab, zoomed to that request (needs ZOOM_COLS in the SQL)
+        url = ("/grafana/d/" + drill_uid + "?from=${__data.fields.zoom_from}&to=${__data.fields.zoom_to}"
+               "&${__all_variables}")
+        for c in drill_cols:
+            overrides.append({"matcher": {"id": "byName", "options": c}, "properties": [
+                {"id": "links", "value": [{"title": "ดู body ของ request นี้ (แท็บใหม่ ซูม ±1 วินาที)",
+                                           "url": url, "targetBlank": True}]}]})
+        for c in ("zoom_from", "zoom_to"):
+            overrides.append({"matcher": {"id": "byName", "options": c}, "properties": [
+                {"id": "custom.hidden", "value": True}]})
     if type_col:  # SIMS result code from the response body: S = accepted, E = rejected
         overrides.append({"matcher": {"id": "byName", "options": type_col}, "properties": [
             {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "basic"}},
@@ -153,6 +164,16 @@ def dashboard(uid, title, tags, panels, templ, desc):
 
 
 QUERIES = {}
+
+# Row caps for the two per-call tables. Both follow the time picker; the cap only guards a busy range.
+# Measured 2026-10-26 (SAP -> SIMS, 7 days): list table 845 B/row (8,629 rows = 7.1 MB), body table 13.3 KB/row
+# (500 rows = 6.5 MB). Grafana on the VM is limited to 384 MB (192 MB in use) — 20,000 list rows is ~17 MB.
+# To read a body, click the time in the list table (drill-down) instead of raising ROWS_BODY.
+ROWS_LIST = 20000
+ROWS_BODY = 500
+# Hidden columns for the drill-down link: the request time ±1 s in epoch ms (Grafana from/to)
+ZOOM_COLS = ("(extract(epoch FROM request_time) * 1000)::bigint - 1000 AS zoom_from, "
+             "(extract(epoch FROM request_time) * 1000)::bigint + 1000 AS zoom_to")
 
 
 def reg(name, panel):
@@ -231,17 +252,21 @@ out_panels = [
                  f"count(*) FILTER (WHERE status_code >= 500 OR status_code = 499) AS \"5xx\", "
                  f"max(request_time) AS \"ล่าสุด\" "
                  f"FROM kong_api_logs WHERE {W_ALL_OUT} GROUP BY 1, 2 ORDER BY \"ล่าสุด\" DESC", 0, 16, 24, 7, status_col=None)),
-    reg(n, table(11, "Call ล่าสุด 200 รายการ (ทุก method)", "interface = ชื่อ interface ของ SAP PI จาก query string · SOAP = element แรกใน Body · route = (ไม่ตรง route — 404) คือ Kong ตอบเองเพราะผิด method หรือผิด path ไม่ถึง SAP",
+    reg(n, table(11, f"Call ทั้งหมดในช่วงเวลาที่เลือก — ล่าสุดก่อน สูงสุด {ROWS_LIST:,} แถว · คลิกเวลา = ดู body (ทุก method)",
+                 "คลิกที่เวลา = เปิดแท็บใหม่ ซูมไปที่ request นั้น ±1 วินาที ตาราง body ด้านล่างจะเหลือแค่ request นั้น "
+                 "· interface = ชื่อ interface ของ SAP PI จาก query string · SOAP = element แรกใน Body · route = (ไม่ตรง route — 404) คือ Kong ตอบเองเพราะผิด method หรือผิด path ไม่ถึง SAP",
                  f"SELECT request_time AS \"เวลา\", {ROUTE_OR_404} AS \"route\", {CALLER} AS \"ผู้เรียก\", client_ip AS \"IP\", method AS \"method\", "
                  f"left(split_part(path, '?', 1), 60) AS \"path\", "
                  f"coalesce(substring(path from 'interface=([^&]+)'), '-') AS \"interface\", "
                  f"coalesce(substring(request_body from '<(?:[A-Za-z0-9_]+:)?Body[^>]*>\\s*<(?:[A-Za-z0-9_]+:)?([A-Za-z0-9_]+)'), '-') AS \"SOAP\", "
                  f"status_code AS \"status\", {SAP_SAYS} AS \"SAP ตอบ\", "
                  f"latency_ms AS \"ms\", request_size AS \"ส่งไป (byte)\", response_size AS \"ได้กลับ (byte)\", "
-                 f"request_id AS \"request_id\" "
-                 f"FROM kong_api_logs WHERE {W_ALL_OUT} ORDER BY request_time DESC LIMIT 200", 0, 23, 24, 11)),
-    reg(n, table(12, "ข้อมูลที่ส่งไป และที่ SAP ตอบกลับ 50 รายการล่าสุด (ทุก method)",
-                 "request body = เนื้อ SOAP ที่ผู้เรียกส่ง · response body = สิ่งที่ SAP ตอบ (SOAP fault / หน้า error บอกสาเหตุ) "
+                 f"request_id AS \"request_id\", {ZOOM_COLS} "
+                 f"FROM kong_api_logs WHERE {W_ALL_OUT} ORDER BY request_time DESC LIMIT {ROWS_LIST}", 0, 23, 24, 11,
+                 drill_uid="kong-sims-to-sap", drill_cols=("เวลา",))),
+    reg(n, table(12, f"ข้อมูลที่ส่งไป และที่ SAP ตอบกลับ ในช่วงเวลาที่เลือก — ล่าสุดก่อน สูงสุด {ROWS_BODY:,} แถว (ทุก method)",
+                 f"เพดาน {ROWS_BODY:,} แถวเพราะ body ใหญ่ — ถ้าหาไม่เจอ ให้คลิกเวลาในตารางด้านบน (หรือลากเลือกช่วงบนกราฟ จำนวน call แยกตามผล) "
+                 "· request body = เนื้อ SOAP ที่ผู้เรียกส่ง · response body = สิ่งที่ SAP ตอบ (SOAP fault / หน้า error บอกสาเหตุ) "
                  "· request headers = header ที่ผู้เรียกส่งมา (Content-Type, SOAPAction, Host) · authorization = ใครยิง: user=ชื่อบัญชี pass_len=ความยาวรหัส (ไม่เก็บตัวรหัส) "
                  "· response headers = header ขากลับ (Server = ใครตอบ, X-Kong-Upstream-Latency มีค่า = ถึง SAP แล้ว, WWW-Authenticate) "
                  "· request ที่ไม่ตรง route (404) ไม่มี response จาก SAP · เก็บ response ตั้งแต่ 2026-10-07 15:50 · header ตั้งแต่ 2026-10-14 "
@@ -251,7 +276,7 @@ out_panels = [
                  f"{HDRS('request_headers')} AS \"request headers\", request_body AS \"request body\", "
                  f"{HDRS('response_headers')} AS \"response headers\", response_body AS \"response body\" "
                  f"FROM kong_api_logs WHERE {W_ALL_OUT} "
-                 f"ORDER BY request_time DESC LIMIT 50",
+                 f"ORDER BY request_time DESC LIMIT {ROWS_BODY}",
                  0, 34, 24, 9, wide_cols=("request body", "response body"),
                  mid_cols=("request headers", "response headers"))),
     text(13, "อ่านผลยังไง", (
@@ -336,7 +361,9 @@ in_panels = [
                  f"count(*) FILTER (WHERE status_code >= 500) AS \"5xx\", "
                  f"max(left(user_agent, 40)) AS \"user agent\", max(request_time) AS \"ล่าสุด\" "
                  f"FROM kong_api_logs WHERE {W_ALL} GROUP BY 1, 2 ORDER BY \"ล่าสุด\" DESC", 0, 16, 24, 7, status_col=None)),
-    reg(n, table(11, "Call ที่เข้า path SAP ล่าสุด 200 รายการ (ทุก method)", "POST = ข้อมูลใบงานจาก SAP · GET/อื่นๆ = มีคนเปิดลิงก์หรือเรียกผิด method (ได้ 404) · รายละเอียดจากใบงานแรกในข้อความ · ใบงาน = จำนวน <HEADER> ในข้อความ · ไม่แสดงเบอร์โทร/เลขบัตรประชาชน (ดูได้ใน request body ด้านล่าง)",
+    reg(n, table(11, f"Call ที่เข้า path SAP ในช่วงเวลาที่เลือก — ล่าสุดก่อน สูงสุด {ROWS_LIST:,} แถว · คลิกเวลา/ORDERID = ดู body (ทุก method)",
+                 "คลิกที่เวลา หรือ ORDERID = เปิดแท็บใหม่ ซูมไปที่ request นั้น ±1 วินาที ตาราง body ด้านล่างจะเหลือแค่ request นั้น "
+                 "· POST = ข้อมูลใบงานจาก SAP · GET/อื่นๆ = มีคนเปิดลิงก์หรือเรียกผิด method (ได้ 404) · รายละเอียดจากใบงานแรกในข้อความ · ใบงาน = จำนวน <HEADER> ในข้อความ · ไม่แสดงเบอร์โทร/เลขบัตรประชาชน (ดูได้ใน request body ด้านล่าง)",
                  f"SELECT request_time AS \"เวลา\", {CALLER} AS \"ผู้เรียก\", client_ip AS \"IP\", method AS \"method\", "
                  f"{ROUTE_OR_404} AS \"route\", "
                  f"coalesce(substring(request_body from '<(?:[A-Za-z0-9_]+:)?Body[^>]*>\\s*<(?:[A-Za-z0-9_]+:)?([A-Za-z0-9_]+)'), '-') AS \"SOAP\", "
@@ -347,10 +374,12 @@ in_panels = [
                  f"CASE WHEN request_body IS NULL THEN NULL ELSE {N_ORDERS} END AS \"ใบงาน\", "
                  f"status_code AS \"status\", {RTYPE} AS \"TYPE\", {RMSG} AS \"MESSAGE\", "
                  f"latency_ms AS \"ms\", request_size AS \"ส่งเข้า (byte)\", response_size AS \"SIMS ตอบ (byte)\", "
-                 f"request_id AS \"request_id\" "
-                 f"FROM kong_api_logs WHERE {W_ALL} ORDER BY request_time DESC LIMIT 200", 0, 23, 24, 11, type_col="TYPE")),
-    reg(n, table(12, "ข้อมูลที่เข้ามา และที่ SIMS ตอบกลับ 50 รายการล่าสุด (ทุก method)",
-                 "request body = เนื้อ SOAP ที่ส่งเข้า SIMS · response body = ผลที่ SIMS ตอบ (TYPE S = รับ / E = ไม่รับ + MESSAGE) "
+                 f"request_id AS \"request_id\", {ZOOM_COLS} "
+                 f"FROM kong_api_logs WHERE {W_ALL} ORDER BY request_time DESC LIMIT {ROWS_LIST}", 0, 23, 24, 11, type_col="TYPE",
+                 drill_uid="kong-sap-to-sims", drill_cols=("เวลา", "ORDERID"))),
+    reg(n, table(12, f"ข้อมูลที่เข้ามา และที่ SIMS ตอบกลับ ในช่วงเวลาที่เลือก — ล่าสุดก่อน สูงสุด {ROWS_BODY:,} แถว (ทุก method)",
+                 f"เพดาน {ROWS_BODY:,} แถวเพราะ body ใหญ่ — ถ้าหาไม่เจอ ให้คลิกเวลาในตารางด้านบน (หรือลากเลือกช่วงบนกราฟ จำนวน call แยกตามผล) "
+                 "· request body = เนื้อ SOAP ที่ส่งเข้า SIMS · response body = ผลที่ SIMS ตอบ (TYPE S = รับ / E = ไม่รับ + MESSAGE) "
                  "· GET ไม่มี body (ไม่ได้ส่งข้อมูล) · response ของ GET ที่ตกไป route sims-uat-all ไม่ถูกเก็บ "
                  "· request headers = header ที่ SAP PI ส่งมา (Content-Type, SOAPAction, User-Agent) · authorization = ใครยิง: user=ชื่อบัญชี pass_len=ความยาวรหัส "
                  "(ไม่เก็บตัวรหัส · pass_len น้อยกว่ารหัสจริง + มี header ชื่อแปลกไม่มีค่า = SAP ตัด base64 ทุก 76 ตัว รหัสไปไม่ครบ) "
@@ -364,7 +393,7 @@ in_panels = [
                  f"{HDRS('request_headers')} AS \"request headers\", request_body AS \"request body\", "
                  f"{HDRS('response_headers')} AS \"response headers\", response_body AS \"response body\" "
                  f"FROM kong_api_logs WHERE {W_ALL} "
-                 f"ORDER BY request_time DESC LIMIT 50",
+                 f"ORDER BY request_time DESC LIMIT {ROWS_BODY}",
                  0, 34, 24, 9, wide_cols=("request body", "response body"), type_col="TYPE",
                  mid_cols=("request headers", "response headers"))),
     text(13, "อ่านผลยังไง", (

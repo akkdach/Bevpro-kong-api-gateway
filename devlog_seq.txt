@@ -1,0 +1,400 @@
+46:GET /app/features/dispatch-monitor/data.ts → 200 1ms
+56:GET /login → 200 148ms
+82:[ValidateTicket] ✔ validation_history table ready
+90:GET /api/v1/dispatch-monitor?date=2026-10-22 → 401 2479ms
+91:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 401 2466ms
+92:GET /api/v1/dispatch-monitor?date=2026-10-22 → 401 0ms
+93:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 401 0ms
+94:GET /login → 200 26ms
+130:GET /login → 200 31ms
+182:    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+187:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+189:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+190:GET /api/v1/validate-ticket/batch/status → 200 1ms
+191:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+194:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+195:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+196:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+197:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+199:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+201:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+203:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+205:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+207:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+211:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+212:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+213:GET /api/v1/dispatch-monitor/orders-by-ids → 200 2ms
+214:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+216:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+221:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+222:prisma:error The "config.server" property is required and must be of type string.
+225:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+226:prisma:error The "config.server" property is required and must be of type string.
+229:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+230:prisma:error The "config.server" property is required and must be of type string.
+233:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+234:prisma:error The "config.server" property is required and must be of type string.
+237:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+238:prisma:error The "config.server" property is required and must be of type string.
+241:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+242:prisma:error The "config.server" property is required and must be of type string.
+245:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+246:prisma:error The "config.server" property is required and must be of type string.
+249:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+250:prisma:error The "config.server" property is required and must be of type string.
+252:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+253:prisma:error The "config.server" property is required and must be of type string.
+256:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+257:prisma:error The "config.server" property is required and must be of type string.
+258:prisma:error The "config.server" property is required and must be of type string.
+261:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+262:prisma:error The "config.server" property is required and must be of type string.
+264:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+265:prisma:error The "config.server" property is required and must be of type string.
+266:prisma:error The "config.server" property is required and must be of type string.
+267:prisma:error The "config.server" property is required and must be of type string.
+268:prisma:error The "config.server" property is required and must be of type string.
+269:prisma:error The "config.server" property is required and must be of type string.
+272:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+273:prisma:error The "config.server" property is required and must be of type string.
+275:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+276:prisma:error The "config.server" property is required and must be of type string.
+277:prisma:error The "config.server" property is required and must be of type string.
+278:prisma:error The "config.server" property is required and must be of type string.
+280:GET /api/v1/dispatch-monitor/manpower → 200 609ms
+281:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+283:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+284:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+285:prisma:error The "config.server" property is required and must be of type string.
+286:prisma:error The "config.server" property is required and must be of type string.
+287:prisma:error The "config.server" property is required and must be of type string.
+288:prisma:error The "config.server" property is required and must be of type string.
+289:prisma:error The "config.server" property is required and must be of type string.
+290:prisma:error The "config.server" property is required and must be of type string.
+294:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+296:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+297:prisma:error The "config.server" property is required and must be of type string.
+300:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+301:prisma:error The "config.server" property is required and must be of type string.
+302:prisma:error The "config.server" property is required and must be of type string.
+305:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+306:prisma:error The "config.server" property is required and must be of type string.
+307:prisma:error The "config.server" property is required and must be of type string.
+308:prisma:error The "config.server" property is required and must be of type string.
+309:prisma:error The "config.server" property is required and must be of type string.
+312:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+313:prisma:error The "config.server" property is required and must be of type string.
+314:prisma:error The "config.server" property is required and must be of type string.
+317:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+319:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+321:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+330:    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+335:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+336:GET /api/v1/validate-ticket/batch/status → 304 1ms
+337:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+339:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+341:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+344:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+346:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+348:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+351:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+353:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+354:GET /api/v1/dispatch-monitor/orders-by-ids → 304 1ms
+355:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+358:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+362:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+363:prisma:error The "config.server" property is required and must be of type string.
+366:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+367:prisma:error The "config.server" property is required and must be of type string.
+370:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+371:prisma:error The "config.server" property is required and must be of type string.
+374:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+375:prisma:error The "config.server" property is required and must be of type string.
+378:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+379:prisma:error The "config.server" property is required and must be of type string.
+382:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+383:prisma:error The "config.server" property is required and must be of type string.
+386:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+387:prisma:error The "config.server" property is required and must be of type string.
+390:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+391:prisma:error The "config.server" property is required and must be of type string.
+393:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+394:prisma:error The "config.server" property is required and must be of type string.
+397:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+398:prisma:error The "config.server" property is required and must be of type string.
+399:prisma:error The "config.server" property is required and must be of type string.
+402:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+403:prisma:error The "config.server" property is required and must be of type string.
+405:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+406:prisma:error The "config.server" property is required and must be of type string.
+407:prisma:error The "config.server" property is required and must be of type string.
+408:prisma:error The "config.server" property is required and must be of type string.
+409:prisma:error The "config.server" property is required and must be of type string.
+410:prisma:error The "config.server" property is required and must be of type string.
+413:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+414:prisma:error The "config.server" property is required and must be of type string.
+416:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+417:prisma:error The "config.server" property is required and must be of type string.
+418:prisma:error The "config.server" property is required and must be of type string.
+419:prisma:error The "config.server" property is required and must be of type string.
+421:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+424:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+426:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+427:prisma:error The "config.server" property is required and must be of type string.
+429:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+430:prisma:error The "config.server" property is required and must be of type string.
+431:prisma:error The "config.server" property is required and must be of type string.
+432:prisma:error The "config.server" property is required and must be of type string.
+433:prisma:error The "config.server" property is required and must be of type string.
+434:prisma:error The "config.server" property is required and must be of type string.
+437:GET /api/v1/dispatch-monitor/manpower → 304 243ms
+438:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+440:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+441:prisma:error The "config.server" property is required and must be of type string.
+444:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+445:prisma:error The "config.server" property is required and must be of type string.
+446:prisma:error The "config.server" property is required and must be of type string.
+449:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+450:prisma:error The "config.server" property is required and must be of type string.
+451:prisma:error The "config.server" property is required and must be of type string.
+452:prisma:error The "config.server" property is required and must be of type string.
+453:prisma:error The "config.server" property is required and must be of type string.
+456:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+457:prisma:error The "config.server" property is required and must be of type string.
+458:prisma:error The "config.server" property is required and must be of type string.
+460:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+463:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+466:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+467:GET /api/v1/validate-ticket/batch/status → 304 16ms
+469:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+471:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+475:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+476:GET /api/v1/validate-ticket/batch/status → 304 0ms
+490:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+491:GET /api/v1/dispatch-monitor → 200 6767ms
+492:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+493:GET /api/v1/dispatch-monitor → 304 2463ms
+496:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+498:GET /app/features/dispatch-monitor/data.ts → 200 1ms
+502:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+503:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+504:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 269ms
+505:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+508:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 281ms
+509:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 1467ms
+510:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 0m | Remaining: 23h 59m
+511:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 921ms
+513:2:35:40 PM [vite] (ssr) page reload server/api/services/customer-satisfaction.service.ts
+514:2:35:40 PM [vite] (ssr) page reload server/api/routes/customer-satisfaction.routes.ts
+515:2:35:40 PM [vite] (client) hmr update /app/app.css
+516:2:35:40 PM [vite] (ssr) hmr update /app/app.css
+517:2:35:40 PM [vite] (client) hmr update /app/app.css
+518:2:35:40 PM [vite] (ssr) hmr update /app/app.css
+519:2:35:40 PM [vite] (client) hmr update /app/app.css
+520:2:35:40 PM [vite] (ssr) hmr update /app/app.css
+521:2:35:40 PM [vite] (client) hmr update /app/app.css
+522:2:35:40 PM [vite] (ssr) hmr update /app/app.css
+523:2:35:40 PM [vite] (ssr) page reload server/api/services/customer-satisfaction.service.ts
+524:2:35:40 PM [vite] (ssr) page reload server/api/routes/customer-satisfaction.routes.ts
+543:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+551:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 1m | Remaining: 23h 58m
+552:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 1m | Remaining: 23h 58m
+554:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 277ms
+555:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 1m | Remaining: 23h 58m
+558:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 491ms
+559:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 1m | Remaining: 23h 58m
+560:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 222ms
+562:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 428ms
+579:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+588:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 57m | Remaining: 21h 2m
+589:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 57m | Remaining: 21h 2m
+590:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 600ms
+591:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 57m | Remaining: 21h 2m
+595:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 759ms
+596:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 57m | Remaining: 21h 2m
+597:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 274ms
+598:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 276ms
+617:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+625:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 58m | Remaining: 21h 1m
+626:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 58m | Remaining: 21h 1m
+627:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 161ms
+628:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 58m | Remaining: 21h 1m
+629:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 177ms
+630:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 58m | Remaining: 21h 1m
+634:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 151ms
+635:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 206ms
+654:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+662:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 59m | Remaining: 21h 0m
+663:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 59m | Remaining: 21h 0m
+664:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 266ms
+665:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 59m | Remaining: 21h 0m
+667:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 150ms
+669:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 485ms
+671:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 2h 59m | Remaining: 21h 0m
+673:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 546ms
+691:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+699:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 0m | Remaining: 20h 59m
+700:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 0m | Remaining: 20h 59m
+701:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 246ms
+702:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 0m | Remaining: 20h 59m
+705:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 455ms
+706:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 0m | Remaining: 20h 59m
+708:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 258ms
+709:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 274ms
+728:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+736:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 1m | Remaining: 20h 58m
+737:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 1m | Remaining: 20h 58m
+738:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 190ms
+739:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 193ms
+740:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 1m | Remaining: 20h 58m
+741:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 1m | Remaining: 20h 58m
+745:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 206ms
+746:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 610ms
+765:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+773:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 2m | Remaining: 20h 57m
+774:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 2m | Remaining: 20h 57m
+775:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 262ms
+776:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 2m | Remaining: 20h 57m
+777:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 279ms
+778:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 2m | Remaining: 20h 57m
+782:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 264ms
+783:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 260ms
+802:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+810:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 3m | Remaining: 20h 56m
+811:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 3m | Remaining: 20h 56m
+812:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 176ms
+813:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 3m | Remaining: 20h 56m
+814:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 224ms
+815:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 3m | Remaining: 20h 56m
+819:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 181ms
+820:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 234ms
+839:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+847:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 4m | Remaining: 20h 55m
+848:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 4m | Remaining: 20h 55m
+849:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 198ms
+850:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 201ms
+851:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 4m | Remaining: 20h 55m
+852:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 4m | Remaining: 20h 55m
+854:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 187ms
+857:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 694ms
+876:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+884:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 5m | Remaining: 20h 54m
+885:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 5m | Remaining: 20h 54m
+886:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 239ms
+887:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 242ms
+888:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 5m | Remaining: 20h 54m
+889:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 5m | Remaining: 20h 54m
+893:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 190ms
+894:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 353ms
+913:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+921:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 6m | Remaining: 20h 53m
+922:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 6m | Remaining: 20h 53m
+923:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 206ms
+925:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 6m | Remaining: 20h 53m
+927:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 306ms
+928:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 6m | Remaining: 20h 53m
+930:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 239ms
+931:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 286ms
+950:GET /app/features/dispatch-monitor/data.ts → 304 1ms
+958:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 7m | Remaining: 20h 52m
+959:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 7m | Remaining: 20h 52m
+960:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 214ms
+961:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 7m | Remaining: 20h 52m
+962:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 254ms
+963:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 7m | Remaining: 20h 52m
+966:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 177ms
+968:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 305ms
+987:GET /app/features/dispatch-monitor/data.ts → 304 1ms
+995:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 8m | Remaining: 20h 51m
+996:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 8m | Remaining: 20h 51m
+997:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 675ms
+998:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 8m | Remaining: 20h 51m
+1001:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 896ms
+1003:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 8m | Remaining: 20h 51m
+1004:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 379ms
+1005:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 495ms
+1024:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1032:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 10m | Remaining: 20h 49m
+1033:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 10m | Remaining: 20h 49m
+1034:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 214ms
+1035:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 218ms
+1036:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 10m | Remaining: 20h 49m
+1037:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 10m | Remaining: 20h 49m
+1040:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 254ms
+1042:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 673ms
+1061:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1069:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 11m | Remaining: 20h 48m
+1070:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 11m | Remaining: 20h 48m
+1072:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 380ms
+1073:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 11m | Remaining: 20h 48m
+1075:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 453ms
+1076:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 11m | Remaining: 20h 48m
+1078:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 226ms
+1080:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 401ms
+1098:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1106:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 12m | Remaining: 20h 47m
+1107:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 12m | Remaining: 20h 47m
+1108:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 249ms
+1109:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 12m | Remaining: 20h 47m
+1110:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 269ms
+1111:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 12m | Remaining: 20h 47m
+1115:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 257ms
+1116:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 280ms
+1135:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1143:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 13m | Remaining: 20h 46m
+1144:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 13m | Remaining: 20h 46m
+1146:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 203ms
+1147:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 13m | Remaining: 20h 46m
+1150:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 214ms
+1152:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 532ms
+1153:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 13m | Remaining: 20h 46m
+1154:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 465ms
+1172:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1180:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 14m | Remaining: 20h 45m
+1181:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 14m | Remaining: 20h 45m
+1182:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 177ms
+1183:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 14m | Remaining: 20h 45m
+1184:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 191ms
+1186:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 14m | Remaining: 20h 45m
+1187:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 178ms
+1189:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 294ms
+1209:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1217:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 23m | Remaining: 20h 36m
+1218:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 23m | Remaining: 20h 36m
+1219:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 404ms
+1221:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 23m | Remaining: 20h 36m
+1222:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 482ms
+1223:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 23m | Remaining: 20h 36m
+1226:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 274ms
+1227:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 409ms
+1246:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1254:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 25m | Remaining: 20h 34m
+1255:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 25m | Remaining: 20h 34m
+1256:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 180ms
+1257:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 25m | Remaining: 20h 34m
+1258:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 274ms
+1259:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 25m | Remaining: 20h 34m
+1263:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 248ms
+1264:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 215ms
+1283:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1291:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 26m | Remaining: 20h 33m
+1292:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 26m | Remaining: 20h 33m
+1293:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 175ms
+1294:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 26m | Remaining: 20h 33m
+1296:GET /api/v1/dispatch-monitor?date=2026-10-22 → 200 255ms
+1297:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 26m | Remaining: 20h 33m
+1298:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 191ms
+1301:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 535ms
+1320:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1328:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 27m | Remaining: 20h 32m
+1329:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 27m | Remaining: 20h 32m
+1330:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 190ms
+1331:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 27m | Remaining: 20h 32m
+1332:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 240ms
+1333:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 27m | Remaining: 20h 32m
+1336:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 304 171ms
+1337:GET /api/v1/dispatch-monitor?date=2026-10-22 → 304 170ms
+1357:GET /app/features/dispatch-monitor/data.ts → 304 0ms
+1365:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 43m | Remaining: 20h 16m
+1366:[PermissionMiddleware] 🔑 User Role is: 'super admin' | Token Age: 3h 43m | Remaining: 20h 16m
+1367:GET /api/v1/dispatch-monitor/manpower?date=2026-10-22 → 200 342ms

@@ -1,0 +1,615 @@
+{
+  "info": {
+    "_postman_id": "1f5b97c4-97ca-4d08-8702-bb81c686bbe9",
+    "name": "BevPro prod-fo-gateway → SAP PRD (WorkOrderUpdate)",
+    "description": "ยิง **XML WorkOrderUpdate ของ SAP แบบเดิม** ผ่าน `https://prod-fo-gateway.bevproasia.com/D365FoService.svc` → **SAP PRD (pbx)** — ไม่ผ่าน Kong\nenvelope เดียวกับที่ F&O (UAT) ส่งเข้า fo-gateway (operation `D365FoWorkOrderInboundSAP`) — prod-fo-gateway เป็น DLL ตัวเดียวกัน (WSDL / operation ตรงกัน)\n\n## ตั้งค่า (คลิกชื่อ collection → แท็บ Variables)\n- พิมพ์ค่าในช่อง value — เป็นค่า **local ในเครื่อง** บันทึกอัตโนมัติ ไม่ต้องกด Save\n- **ห้ามกด Share** ที่ตัวแปรรหัส (ส่งค่าขึ้น Postman cloud) · **ห้ามกด Secure** (script อ่านค่าใน vault ไม่ได้ จะส่งรหัสผิดเข้า SAP)\n- ถ้า Postman รุ่นเก่ายังมีคอลัมน์ Initial value / Current value → ใส่ใน **Current value เท่านั้น**\n\n| ตัวแปร | ใส่อะไร |\n|---|---|\n| `foGatewayPassword` | รหัส IIS ของ user `innovation` (ตัวเดียวกับที่ TestConnect ได้ 200) |\n| `sapPrdUrl` | URL เต็มจาก **F&O Prod** → Client configuration parameters → SAP End Point → *Work Order inbound SAP* (`https://pbx…/XISOAPAdapter/MessageServlet?…interface=WorkOrderUpdate_Out…`) — ห้ามลอกของ UAT |\n| `sapPrdUser` / `sapPrdPassword` | บัญชี SAP PRD ที่ F&O Prod ใช้ |\n| `confirmOrderId` | ORDERID ใน Body + `@` + เวลาตอนนี้ HHmm เช่น `000012345678@1432` (ใช้ได้ 10 นาที, ล้างเองหลังส่ง) |\n| `confirmResend` | ใช้เฉพาะเมื่อตั้งใจส่ง ORDERID เดิมซ้ำภายใน 24 ชม. (หลังตรวจใน SAP แล้ว) |\n| `lastResult` / `lastSentOrderId` / `lastSentAt` | script เขียนให้ — ดูผลล่าสุด / ตัวกันส่งซ้ำ (ไม่ต้องแก้) |\n\n## ลำดับ\n1. กด **1. TestConnect** → ต้องได้ `READY: TestConnect Status = true`\n2. เปิด **2. Work Order Update** → ลบข้อความใน Body → วาง XML ใบงานจริง → ตั้ง `confirmOrderId` → **Send ครั้งเดียว**\n3. อ่าน Test Results (ตารางด้านล่าง) → ปิดแท็บเลือก **Don't save**\n\n| ผลใน Test Results | แปลว่า | ทำต่อ |\n|---|---|---|\n| `ACCEPTED: SAP PRD accepted ORDERID …` | SAP PRD รับแล้ว (มาจาก `EX_INB_ORDER_RET`) | จบ |\n| `SAP PRD refused (not written): …` | SAP ตอบ fault ของตัวเอง — ไม่ได้เขียน | แก้ข้อมูลตามข้อความก่อน ส่งซ้ำ XML เดิมก็ได้ผลเดิม |\n| `OUTCOME UNKNOWN …` | ไม่รู้ว่า SAP รับหรือไม่ (gateway error / timeout / ไม่มี response) | **ห้ามส่งซ้ำ** ตรวจใบงานใน SAP PRD (IW33) หรือให้ TNT ดู SXMB_MONI ก่อน |\n| `SAP answered for ORDERID X, not Y` | SAP ตอบเลขอื่น — ยืนยันไม่ได้ | ห้ามส่งซ้ำ ตรวจใน SAP |\n| `STOP: … (401)` | รหัสผิด (IIS หรือ SAP) — ระบบล้างช่องรหัสให้แล้ว | **ห้ามกดซ้ำ** พิมพ์รหัสที่ถูกแล้วส่งครั้งเดียว |\n| `NOT SENT: …` | ตัวกันไม่ให้ส่ง — ไม่มีอะไรออกจากเครื่อง | อ่านเหตุผลแล้วแก้ |\n\nกด Send แล้วไม่มี response = ถูกบล็อก → เหตุผลอยู่ใน Test Results, **Console** (ปุ่ม Console มุมล่างซ้าย หรือ Ctrl+Alt+C) หรือตัวแปร `lastResult`\n\n## ตัวกันที่มีให้\n- ไม่ส่งถ้า: ตัวแปรว่าง / มีช่องว่างหัวท้าย / อักขระมองไม่เห็น / ตัวอักษรไทยในรหัส · `{{ }}` ในค่า · มี `|` · `foGatewayUrl` ไม่ใช่ prod-fo-gateway · `sapPrdUrl` ไม่อยู่ใน allowlist ของ PRD หรือไม่ใช่ `interface=WorkOrderUpdate_Out` · Body ยังเป็นข้อความเริ่มต้น / ตัวอย่าง QAS / มีคอมเมนต์หรือ CDATA / ORDERID ไม่ตรงกัน · `confirmOrderId` ไม่ตรงหรือหมดเวลา · ORDERID เดิมเพิ่งส่งไปภายใน 24 ชม. · รันด้วย Runner หลาย iteration หรือ data file\n- เรียกได้แค่ TestConnect กับ D365FoWorkOrderInboundSAP — operation อื่น (เช่น `ConfigSettings` ที่แก้ config ของ gateway) ถูกบล็อกที่ระดับ collection\n- 401 → หยุดทันที ล้างช่องรหัสที่ผิด และบล็อก request ที่เหลือในรอบนั้น\n\n## ข้อควรรู้\n- HTTP 200 จาก gateway ≠ SAP รับ — ต้องเห็น `ACCEPTED: …`\n- Postman **Console** และผลของ Runner แสดง body ที่ส่งจริง ซึ่งมี `resouceSap` (base64 ถอดกลับเป็นรหัส SAP ได้ทันที) — อย่าแคป Console / อย่าแชร์หรือ export ผลรัน / ปิด panel Variables ก่อนแคปทุกครั้ง\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{foGatewayUser}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{foGatewayPassword}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const GATEWAY = 'https://prod-fo-gateway.bevproasia.com';",
+          "const reasons = [];",
+          "const str = k => String(pm.variables.get(k) || '');",
+          "const clear = k => {",
+          "    if (pm.environment.has(k)) { pm.environment.set(k, ''); }",
+          "    if (pm.collectionVariables.has(k)) { pm.collectionVariables.set(k, ''); }",
+          "    if (pm.globals.has(k)) { pm.globals.set(k, ''); }",
+          "};",
+          "",
+          "// Runs before every request of this collection: only TestConnect and D365FoWorkOrderInboundSAP may leave Postman.",
+          "try {",
+          "",
+          "    if (str('foGatewayUrl').trim().replace(/\\/+$/, '') !== GATEWAY) {",
+          "        reasons.push('foGatewayUrl must be ' + GATEWAY + ' (allowlist in the collection scripts)');",
+          "    }",
+          "    if (pm.info.iterationCount > 1) { reasons.push('run with 1 iteration only: use Send, not the Runner with iterations'); }",
+          "    ['confirmOrderId', 'confirmResend', 'foGatewayUrl', 'foGatewayPassword', 'sapPrdUrl', 'sapPrdUser', 'sapPrdPassword'].forEach(k => {",
+          "        if (pm.iterationData.has(k)) { reasons.push(k + ' must not come from a Runner data file'); }",
+          "    });",
+          "    if (pm.variables.get('loginFailed')) { reasons.push('a login already failed (401) in this run: fix the password, then Send once'); }",
+          "",
+          "    const path = pm.request.url.getPath();",
+          "    const action = (pm.request.headers.get('SOAPAction') || '').replace(/\"/g, '').trim();",
+          "    const raw = (pm.request.body && pm.request.body.raw) || '';",
+          "    if (path !== '/D365FoService.svc') { reasons.push('only /D365FoService.svc is allowed (path is ' + path + ')'); }",
+          "    if (action && !/^http:\\/\\/tempuri\\.org\\/ID365FoService\\/(TestConnect|D365FoWorkOrderInboundSAP)$/.test(action)) {",
+          "        reasons.push('SOAPAction ' + action + ' is not allowed: this collection only calls TestConnect and D365FoWorkOrderInboundSAP');",
+          "    }",
+          "    if (/ConfigSettings|CallGetToken|D365FoWorkOrderInboundGateway|WorkOrderInbound(?!SAP)|WorkOrderOutbound|AssetMaterialMasterOutbound|QIInfomation|SimulateCreateSalesOrderMobile|getCatalogProfile/.test(raw)) {",
+          "        reasons.push('the Body names another prod-fo-gateway operation: this collection only calls TestConnect and D365FoWorkOrderInboundSAP');",
+          "    }",
+          "} catch (e) {",
+          "    reasons.push('script error: ' + e.message);",
+          "}",
+          "",
+          "if (reasons.length) {",
+          "    const msg = 'NOT SENT: ' + reasons.join(' | ');",
+          "    // Fail closed first: newman still sends a request after a pre-request error, so point it nowhere,",
+          "    // without credentials or body.",
+          "    try { pm.request.authorizeUsing('noauth'); } catch (e) { /* older Postman: the URL change below still applies */ }",
+          "    pm.request.url.update('http://127.0.0.1:9/NOT-SENT');",
+          "    pm.request.headers.remove('SOAPAction');",
+          "    pm.request.body.update({ mode: 'raw', raw: '' });",
+          "    // Report before skipRequest: it ends this script, so nothing after it (throw, test, log) is shown.",
+          "    console.error(msg);",
+          "    try { pm.collectionVariables.set('lastResult', msg); } catch (e) { /* read-only runtime */ }",
+          "    pm.test(msg, function () { pm.expect.fail('not sent'); });",
+          "    if (pm.execution && typeof pm.execution.skipRequest === 'function') { pm.execution.skipRequest(); }",
+          "    throw new Error(msg);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. TestConnect (read-only)",
+      "protocolProfileBehavior": {
+        "disableCookies": true,
+        "strictSSL": true
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const GATEWAY = 'https://prod-fo-gateway.bevproasia.com';",
+              "const reasons = [];",
+              "const str = k => String(pm.variables.get(k) || '');",
+              "const clear = k => {",
+              "    if (pm.environment.has(k)) { pm.environment.set(k, ''); }",
+              "    if (pm.collectionVariables.has(k)) { pm.collectionVariables.set(k, ''); }",
+              "    if (pm.globals.has(k)) { pm.globals.set(k, ''); }",
+              "};",
+              "",
+              "// Read-only ping of prod-fo-gateway: checks the IIS login (foGatewayUser). It does not call SAP.",
+              "try {",
+              "",
+              "    if (str('foGatewayUrl').trim().replace(/\\/+$/, '') !== GATEWAY) {",
+              "        reasons.push('foGatewayUrl must be ' + GATEWAY + ' (allowlist in the collection scripts)');",
+              "    }",
+              "    if (pm.info.iterationCount > 1) { reasons.push('run with 1 iteration only: use Send, not the Runner with iterations'); }",
+              "    ['confirmOrderId', 'confirmResend', 'foGatewayUrl', 'foGatewayPassword', 'sapPrdUrl', 'sapPrdUser', 'sapPrdPassword'].forEach(k => {",
+              "        if (pm.iterationData.has(k)) { reasons.push(k + ' must not come from a Runner data file'); }",
+              "    });",
+              "    if (pm.variables.get('loginFailed')) { reasons.push('a login already failed (401) in this run: fix the password, then Send once'); }",
+              "",
+              "    const checkSecret = k => {",
+              "        const v = str(k);",
+              "        if (!v) { reasons.push(k + ' is empty (an empty password still counts as a failed login)'); return; }",
+              "        if (/^\\s|\\s$/.test(v) || /[\\u0000-\\u001f\\u007f ​-‍⁠﻿]/.test(v)) {",
+              "            reasons.push(k + ' has leading/trailing spaces or invisible characters (copy-paste?): type it again');",
+              "        }",
+              "        if (/[฀-๿]/.test(v) && str('allowThaiPassword') !== '1') {",
+              "            reasons.push(k + ' contains Thai letters: is the keyboard still in Thai? If that is really the password, set allowThaiPassword = 1');",
+              "        }",
+              "        if (/\\{\\{|\\}\\}/.test(v)) { reasons.push(k + ' contains {{ }}: type the plain value (do not use Secure/vault for this variable)'); }",
+              "    };",
+              "",
+              "    checkSecret('foGatewayPassword');",
+              "} catch (e) {",
+              "    reasons.push('script error: ' + e.message);",
+              "}",
+              "",
+              "if (reasons.length) {",
+              "    const msg = 'NOT SENT: ' + reasons.join(' | ');",
+              "    // Fail closed first: newman still sends a request after a pre-request error, so point it nowhere,",
+              "    // without credentials or body.",
+              "    try { pm.request.authorizeUsing('noauth'); } catch (e) { /* older Postman: the URL change below still applies */ }",
+              "    pm.request.url.update('http://127.0.0.1:9/NOT-SENT');",
+              "    pm.request.headers.remove('SOAPAction');",
+              "    pm.request.body.update({ mode: 'raw', raw: '' });",
+              "    // Report before skipRequest: it ends this script, so nothing after it (throw, test, log) is shown.",
+              "    console.error(msg);",
+              "    try { pm.collectionVariables.set('lastResult', msg); } catch (e) { /* read-only runtime */ }",
+              "    pm.test(msg, function () { pm.expect.fail('not sent'); });",
+              "    if (pm.execution && typeof pm.execution.skipRequest === 'function') { pm.execution.skipRequest(); }",
+              "    throw new Error(msg);",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const str = k => String(pm.variables.get(k) || '');",
+              "const clear = k => {",
+              "    if (pm.environment.has(k)) { pm.environment.set(k, ''); }",
+              "    if (pm.collectionVariables.has(k)) { pm.collectionVariables.set(k, ''); }",
+              "    if (pm.globals.has(k)) { pm.globals.set(k, ''); }",
+              "};",
+              "const stopRunner = () => {",
+              "    if (pm.execution && typeof pm.execution.setNextRequest === 'function') { pm.execution.setNextRequest(null); }",
+              "    else if (typeof postman !== 'undefined') { postman.setNextRequest(null); }",
+              "};",
+              "const report = (ok, msg) => {",
+              "    try { pm.collectionVariables.set('lastResult', msg); } catch (e) { /* read-only runtime */ }",
+              "    pm.test(msg, function () { if (!ok) { pm.expect.fail(msg.split(':')[0]); } });",
+              "    if (!ok) { stopRunner(); }",
+              "};",
+              "const loginFailed = () => { pm.variables.set('loginFailed', '1'); };  // local: blocks the rest of this run",
+              "const code = pm.response && typeof pm.response.code === 'number' ? pm.response.code : null;",
+              "const body = code === null ? '' : (pm.response.text() || '');",
+              "const plain = s => s.replace(/<!\\[CDATA\\[|\\]\\]>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();",
+              "",
+              "if (code === null) {",
+              "    report(false, 'prod-fo-gateway did not answer: check the office network/IP and foGatewayUrl; do not retry in a loop');",
+              "} else if (code === 401) {",
+              "    clear('foGatewayPassword');",
+              "    loginFailed();",
+              "    report(false, 'STOP: IIS rejected user ' + str('foGatewayUser') + ' (401). foGatewayPassword was cleared. Each wrong try counts: '",
+              "        + '10 wrong in 10 minutes locks the account for 10 minutes. Type the right password, then try ONCE');",
+              "} else if (code !== 200) {",
+              "    report(false, 'prod-fo-gateway answered HTTP ' + code + ': ' + plain(body).slice(0, 200)",
+              "        + ' – check the office network/IP and foGatewayUrl; do not retry in a loop');",
+              "} else if (/Status>true</.test(body)) {",
+              "    report(true, 'READY: TestConnect Status = true (IIS login OK, SAP not called)');",
+              "} else {",
+              "    report(false, 'prod-fo-gateway answered 200 but Status is not true: send this response to the developer');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          },
+          {
+            "key": "SOAPAction",
+            "value": "\"http://tempuri.org/ID365FoService/TestConnect\""
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header/><soapenv:Body><TestConnect xmlns=\"http://tempuri.org/\"/></soapenv:Body></soapenv:Envelope>",
+          "options": {
+            "raw": {
+              "language": "xml"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{foGatewayUrl}}/D365FoService.svc",
+          "host": [
+            "{{foGatewayUrl}}"
+          ],
+          "path": [
+            "D365FoService.svc"
+          ]
+        },
+        "description": "เช็คว่า login IIS (`foGatewayUser`) ผ่านและ service ตอบ — **ไม่เรียก SAP** · `READY: TestConnect Status = true` = พร้อม · ได้ 401 = รหัสผิด (ห้ามกดวน: ผิด 10 ครั้งใน 10 นาที บัญชีล็อก 10 นาที)"
+      }
+    },
+    {
+      "name": "2. Work Order Update → SAP PRD ⚠️",
+      "protocolProfileBehavior": {
+        "disableCookies": true,
+        "strictSSL": true
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const GATEWAY = 'https://prod-fo-gateway.bevproasia.com';",
+              "const reasons = [];",
+              "const str = k => String(pm.variables.get(k) || '');",
+              "const clear = k => {",
+              "    if (pm.environment.has(k)) { pm.environment.set(k, ''); }",
+              "    if (pm.collectionVariables.has(k)) { pm.collectionVariables.set(k, ''); }",
+              "    if (pm.globals.has(k)) { pm.globals.set(k, ''); }",
+              "};",
+              "",
+              "// Wraps the SAP WorkOrderUpdate XML from the Body tab into the envelope F&O sends to fo-gateway",
+              "// (operation D365FoWorkOrderInboundSAP); the gateway then posts that XML to SAP PRD with the URL/user/password below.",
+              "// Nothing is sent unless every check passes; SOAPAction is added only after the Body was really replaced.",
+              "const ENVELOPE_PREFIX = '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"><soapenv:Header/><soapenv:Body><D365FoWorkOrderInboundSAP xmlns=\"http://tempuri.org/\"><soapBodySap>';",
+              "const PRD_URLS = [",
+              "    /^https:\\/\\/(pbx\\.thainamthip\\.co\\.th|119\\.63\\.88\\.141)(:\\d+)?\\/XISOAPAdapter\\/MessageServlet\\?/i,",
+              "    /^https:\\/\\/bevprogateway\\.southeastasia\\.cloudapp\\.azure\\.com\\/sap-pi-prod\\/XISOAPAdapter\\/MessageServlet\\?/i,",
+              "];",
+              "const SAMPLE_IDS = ['42970855', '49042283'];  // QAS test orders from the SIMS-SAP collection (leading zeros dropped)",
+              "const norm = s => String(s).trim().replace(/^0+/, '');",
+              "pm.variables.set('sentOrderId', '');  // local variables live for the whole run; never reuse the previous request's",
+              "try {",
+              "    const cj = require('crypto-js');  // not 'CryptoJS': Postman already defines that name",
+              "    const b64 = s => cj.enc.Base64.stringify(cj.enc.Utf8.parse(s));",
+              "",
+              "    if (str('foGatewayUrl').trim().replace(/\\/+$/, '') !== GATEWAY) {",
+              "        reasons.push('foGatewayUrl must be ' + GATEWAY + ' (allowlist in the collection scripts)');",
+              "    }",
+              "    if (pm.info.iterationCount > 1) { reasons.push('run with 1 iteration only: use Send, not the Runner with iterations'); }",
+              "    ['confirmOrderId', 'confirmResend', 'foGatewayUrl', 'foGatewayPassword', 'sapPrdUrl', 'sapPrdUser', 'sapPrdPassword'].forEach(k => {",
+              "        if (pm.iterationData.has(k)) { reasons.push(k + ' must not come from a Runner data file'); }",
+              "    });",
+              "    if (pm.variables.get('loginFailed')) { reasons.push('a login already failed (401) in this run: fix the password, then Send once'); }",
+              "",
+              "    const checkSecret = k => {",
+              "        const v = str(k);",
+              "        if (!v) { reasons.push(k + ' is empty (an empty password still counts as a failed login)'); return; }",
+              "        if (/^\\s|\\s$/.test(v) || /[\\u0000-\\u001f\\u007f ​-‍⁠﻿]/.test(v)) {",
+              "            reasons.push(k + ' has leading/trailing spaces or invisible characters (copy-paste?): type it again');",
+              "        }",
+              "        if (/[฀-๿]/.test(v) && str('allowThaiPassword') !== '1') {",
+              "            reasons.push(k + ' contains Thai letters: is the keyboard still in Thai? If that is really the password, set allowThaiPassword = 1');",
+              "        }",
+              "        if (/\\{\\{|\\}\\}/.test(v)) { reasons.push(k + ' contains {{ }}: type the plain value (do not use Secure/vault for this variable)'); }",
+              "    };",
+              "",
+              "    checkSecret('foGatewayPassword');",
+              "    checkSecret('sapPrdPassword');",
+              "",
+              "    const sapXml = pm.variables.replaceIn(pm.request.body.raw || '').trim();",
+              "    const url = str('sapPrdUrl').trim();",
+              "    const user = str('sapPrdUser').trim();",
+              "    const pass = str('sapPrdPassword');",
+              "",
+              "    if (!url) {",
+              "        reasons.push('sapPrdUrl is empty');",
+              "    } else if (/\\/sap-pi-uat|\\/sap-pi-test|qbx|119\\.63\\.88\\.132/i.test(url)) {",
+              "        reasons.push('sapPrdUrl points to SAP QAS (qbx, Kong /sap-pi-uat or /sap-pi-test); this collection writes to SAP PRD');",
+              "    } else if (!PRD_URLS.some(re => re.test(url))) {",
+              "        reasons.push('sapPrdUrl is not on the SAP PRD allowlist (https://pbx.thainamthip.co.th[:port] or 119.63.88.141 '",
+              "            + '/XISOAPAdapter/MessageServlet?..., or Kong /sap-pi-prod/...). If the real PRD endpoint is different, '",
+              "            + 'an admin must add it to PRD_URLS in the collection scripts');",
+              "    }",
+              "    if (url && !/[?&]interface=WorkOrderUpdate_Out(&|$)/.test(url)) {",
+              "        reasons.push('sapPrdUrl must contain interface=WorkOrderUpdate_Out (the Work Order inbound SAP row in F&O Prod)');",
+              "    }",
+              "    if (!user) { reasons.push('sapPrdUser is empty'); }",
+              "    if (/\\{\\{|\\}\\}/.test(url + user)) { reasons.push('sapPrdUrl/sapPrdUser contain {{ }}: type the plain value'); }",
+              "    if ([url, user, pass].some(s => s.includes('|'))) {",
+              "        reasons.push(\"sapPrdUrl/sapPrdUser/sapPrdPassword must not contain '|' (the gateway splits resouceSap on it)\");",
+              "    }",
+              "",
+              "    if (!/FTD_INB_WORK_ORDER/.test(sapXml)) {",
+              "        reasons.push('Body is still the placeholder or not a SAP WorkOrderUpdate XML (no FTD_INB_WORK_ORDER): paste the real order XML');",
+              "    }",
+              "    if (/<!--|<!\\[CDATA\\[/i.test(sapXml)) {",
+              "        reasons.push('Body contains an XML comment or CDATA (delete the placeholder comment); the ORDERID check cannot see inside them');",
+              "    }",
+              "    if (/\\{\\{[^}]*\\}\\}/.test(sapXml)) { reasons.push('Body still contains an undefined {{variable}}'); }",
+              "    const ids = [];",
+              "    const re = /<ORDERID>(\\d{12})<\\/ORDERID>/g;",
+              "    let m;",
+              "    while ((m = re.exec(sapXml)) !== null) { ids.push(m[1]); }",
+              "    const uniq = ids.filter((v, i) => ids.indexOf(v) === i);",
+              "    if ((sapXml.match(/ORDERID/gi) || []).length !== ids.length * 2) {",
+              "        reasons.push('Body has an ORDERID the script cannot check (namespace prefix, attribute, spaces, or not 12 digits)');",
+              "    }",
+              "    if (uniq.length === 0) { reasons.push('Body has no <ORDERID>'); }",
+              "    if (uniq.length > 1) { reasons.push('ORDERID differs inside the Body: ' + uniq.join(', ') + ' (all must be the same order)'); }",
+              "    if (uniq.some(i => SAMPLE_IDS.includes(norm(i))) || /Dummy_Resource|<PERSONNEL_NUMBER>\\s*99999999\\s*</.test(sapXml)) {",
+              "        reasons.push('Body is still a QAS test sample (sample ORDERID, Dummy_Resource or PERSONNEL_NUMBER 99999999): paste the real order XML');",
+              "    }",
+              "    const id = uniq.length === 1 ? uniq[0] : '';",
+              "",
+              "    // Time-bound confirmation: <ORDERID>@<HHmm>, valid 10 minutes, so a value restored by a Runner or left from",
+              "    // an earlier day cannot fire again.",
+              "    if (id) {",
+              "        const c = str('confirmOrderId').trim().match(/^(\\d{1,12})@(\\d{2}):?(\\d{2})$/);",
+              "        const now = new Date();",
+              "        const hhmm = ('0' + now.getHours()).slice(-2) + ('0' + now.getMinutes()).slice(-2);",
+              "        if (!c) {",
+              "            reasons.push('confirmOrderId must be the ORDERID in the Body + @ + the current time HHmm, e.g. 000012345678@1432 (valid for 10 minutes)');",
+              "        } else {",
+              "            if (norm(c[1]) !== norm(id)) { reasons.push('confirmOrderId: the ORDERID part does not match the Body'); }",
+              "            const diff = Math.abs(now.getHours() * 60 + now.getMinutes() - (Number(c[2]) * 60 + Number(c[3])));",
+              "            if (Number(c[2]) > 23 || Number(c[3]) > 59 || Math.min(diff, 1440 - diff) > 10) {",
+              "                reasons.push('confirmOrderId: the time part must be within 10 minutes of now (' + hhmm + '); type it again');",
+              "            }",
+              "        }",
+              "    }",
+              "",
+              "    // Duplicate barrier: the same ORDERID within 24 h (accepted or outcome unknown) needs confirmResend.",
+              "    const lastId = String(pm.collectionVariables.get('lastSentOrderId') || '');",
+              "    const lastAt = Number(pm.collectionVariables.get('lastSentAt') || 0);",
+              "    const resend = str('confirmResend').trim();",
+              "    let resendUsed = false;",
+              "    if (id && lastId && norm(lastId) === norm(id) && Date.now() - lastAt < 24 * 3600 * 1000) {",
+              "        if (resend && norm(resend) === norm(id)) {",
+              "            resendUsed = true;",
+              "        } else {",
+              "            reasons.push('this ORDERID was already sent at ' + new Date(lastAt).toLocaleString()",
+              "                + ' (accepted or outcome unknown). Check it in SAP PRD first; to send it again on purpose set confirmResend to the same ORDERID');",
+              "        }",
+              "    }",
+              "",
+              "    if (!reasons.length) {",
+              "        clear('confirmOrderId');  // one confirmation = one send",
+              "        if (resendUsed) { clear('confirmResend'); }",
+              "        pm.request.body.update({",
+              "            mode: 'raw',",
+              "            raw: ENVELOPE_PREFIX + b64(sapXml) + '</soapBodySap>' +",
+              "                '<resouceSap>' + b64(url + '|' + user + '|' + pass) + '</resouceSap>' +",
+              "                '</D365FoWorkOrderInboundSAP></soapenv:Body></soapenv:Envelope>',",
+              "            options: { raw: { language: 'xml' } }",
+              "        });",
+              "        if (!String(pm.request.body.raw || '').startsWith(ENVELOPE_PREFIX)) {",
+              "            reasons.push('this Postman version did not let the script replace the Body: nothing sent');",
+              "        } else {",
+              "            pm.request.headers.upsert({ key: 'SOAPAction', value: 'http://tempuri.org/ID365FoService/D365FoWorkOrderInboundSAP' });",
+              "            pm.request.headers.upsert({ key: 'Content-Type', value: 'text/xml; charset=utf-8' });",
+              "            pm.collectionVariables.set('lastSentOrderId', id);",
+              "            pm.collectionVariables.set('lastSentAt', String(Date.now()));",
+              "            pm.variables.set('sentOrderId', id);",
+              "            console.log('Sending ORDERID ' + id + ' to SAP PRD host ' + url.replace(/^https:\\/\\/([^\\/?#]+).*$/i, '$1') + ' via prod-fo-gateway');",
+              "        }",
+              "    }",
+              "} catch (e) {",
+              "    reasons.push('script error: ' + e.message);",
+              "}",
+              "if (reasons.length) { pm.variables.set('sentOrderId', ''); }",
+              "",
+              "if (reasons.length) {",
+              "    const msg = 'NOT SENT: ' + reasons.join(' | ');",
+              "    // Fail closed first: newman still sends a request after a pre-request error, so point it nowhere,",
+              "    // without credentials or body.",
+              "    try { pm.request.authorizeUsing('noauth'); } catch (e) { /* older Postman: the URL change below still applies */ }",
+              "    pm.request.url.update('http://127.0.0.1:9/NOT-SENT');",
+              "    pm.request.headers.remove('SOAPAction');",
+              "    pm.request.body.update({ mode: 'raw', raw: '' });",
+              "    // Report before skipRequest: it ends this script, so nothing after it (throw, test, log) is shown.",
+              "    console.error(msg);",
+              "    try { pm.collectionVariables.set('lastResult', msg); } catch (e) { /* read-only runtime */ }",
+              "    pm.test(msg, function () { pm.expect.fail('not sent'); });",
+              "    if (pm.execution && typeof pm.execution.skipRequest === 'function') { pm.execution.skipRequest(); }",
+              "    throw new Error(msg);",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const str = k => String(pm.variables.get(k) || '');",
+              "const clear = k => {",
+              "    if (pm.environment.has(k)) { pm.environment.set(k, ''); }",
+              "    if (pm.collectionVariables.has(k)) { pm.collectionVariables.set(k, ''); }",
+              "    if (pm.globals.has(k)) { pm.globals.set(k, ''); }",
+              "};",
+              "const stopRunner = () => {",
+              "    if (pm.execution && typeof pm.execution.setNextRequest === 'function') { pm.execution.setNextRequest(null); }",
+              "    else if (typeof postman !== 'undefined') { postman.setNextRequest(null); }",
+              "};",
+              "const report = (ok, msg) => {",
+              "    try { pm.collectionVariables.set('lastResult', msg); } catch (e) { /* read-only runtime */ }",
+              "    pm.test(msg, function () { if (!ok) { pm.expect.fail(msg.split(':')[0]); } });",
+              "    if (!ok) { stopRunner(); }",
+              "};",
+              "const loginFailed = () => { pm.variables.set('loginFailed', '1'); };  // local: blocks the rest of this run",
+              "const code = pm.response && typeof pm.response.code === 'number' ? pm.response.code : null;",
+              "const body = code === null ? '' : (pm.response.text() || '');",
+              "const plain = s => s.replace(/<!\\[CDATA\\[|\\]\\]>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();",
+              "",
+              "// HTTP 200 alone is not success: the gateway answers 200 even when SAP refuses, so read SAP's own answer",
+              "// inside D365FoWorkOrderInboundSAPResult. Only a definite \"not written\" clears the duplicate barrier.",
+              "const cj = require('crypto-js');  // not 'CryptoJS': Postman already defines that name",
+              "const sent = pm.variables.get('sentOrderId');",
+              "const norm = s => String(s || '').trim().replace(/^0+/, '');",
+              "const notWritten = () => { pm.collectionVariables.set('lastSentOrderId', ''); pm.collectionVariables.set('lastSentAt', ''); };",
+              "const unknown = why => report(false, 'OUTCOME UNKNOWN for ORDERID ' + sent + ' (' + why + ') – do NOT resend; '",
+              "    + 'check the order in SAP PRD (IW33) or ask TNT to check SXMB_MONI first');",
+              "const unescapeXml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\")",
+              "    .replace(/&#x?[0-9a-fA-F]+;/g, ' ').replace(/&amp;/g, '&');",
+              "const tag = (s, t) => (s.match(new RegExp('<(?:\\\\w+:)?' + t + '[^>]*>([\\\\s\\\\S]*?)<\\\\/(?:\\\\w+:)?' + t + '>', 'i')) || [])[1];",
+              "const faultText = s => [tag(s, 'faultstring'), tag(s, 'code'), tag(s, 'text')].filter(Boolean).map(plain).join(' | ');",
+              "",
+              "const r = body.match(/<D365FoWorkOrderInboundSAPResult[^>]*>([\\s\\S]*?)<\\/D365FoWorkOrderInboundSAPResult>/);",
+              "let result = r ? unescapeXml(r[1]) : '';",
+              "if (/&lt;/.test(result)) { result = unescapeXml(result); }",
+              "const compact = result.replace(/\\s/g, '');",
+              "if (compact.length >= 16 && compact.length % 4 === 0 && /^[A-Za-z0-9+\\/]+=*$/.test(compact)) {",
+              "    try {",
+              "        const decoded = cj.enc.Base64.parse(compact).toString(cj.enc.Utf8);",
+              "        if (decoded.includes('<')) { result = decoded; }",
+              "    } catch (e) { /* not base64 */ }",
+              "}",
+              "if (result) { console.log('D365FoWorkOrderInboundSAPResult:', result); }",
+              "",
+              "if (!sent) {",
+              "    pm.test('NOT SENT: blocked before sending (reason in Console or the variable lastResult)', function () { pm.expect.fail('not sent'); });",
+              "} else if (code === null) {",
+              "    unknown('no response from prod-fo-gateway');",
+              "} else if (code === 401) {",
+              "    clear('foGatewayPassword');",
+              "    loginFailed();",
+              "    notWritten();",
+              "    report(false, 'STOP: IIS rejected user ' + str('foGatewayUser') + ' (401); SAP was not called. foGatewayPassword was cleared: '",
+              "        + 'type the right one, run TestConnect once, then send');",
+              "} else if (r) {",
+              "    const sapOrder = (result.match(/<EX_INB_ORDER_RET>[\\s\\S]*?<ORDERID>\\s*([^<]*?)\\s*<\\/ORDERID>/) || [])[1];",
+              "    const sapFault = /<(?:\\w+:)?Fault[\\s>]/.test(result) || /SystemError|faultstring/i.test(result);",
+              "    if (!result.trim()) {",
+              "        unknown('empty D365FoWorkOrderInboundSAPResult');",
+              "    } else if (sapOrder !== undefined && norm(sapOrder) && norm(sapOrder) === norm(sent)) {",
+              "        report(true, 'ACCEPTED: SAP PRD accepted ORDERID ' + sent);",
+              "    } else if (sapOrder !== undefined) {",
+              "        report(false, 'SAP answered for ORDERID ' + (sapOrder || '(empty)') + ', not ' + sent",
+              "            + ': NOT confirmed – do not resend; check the order in SAP PRD (IW33)');",
+              "    } else if (/\\(401\\)|Unauthorized/i.test(result)) {",
+              "        clear('sapPrdPassword');",
+              "        loginFailed();",
+              "        notWritten();",
+              "        report(false, 'STOP: SAP PRD rejected sapPrdUser/sapPrdPassword (401); nothing written. sapPrdPassword was cleared. '",
+              "            + 'Every wrong try counts toward locking the SAP account F&O Prod uses every day');",
+              "    } else if (sapFault && /time[\\s-]?out|timed out/i.test(result)) {",
+              "        unknown('SAP PI timed out: ' + (faultText(result) || plain(result)).slice(0, 200));",
+              "    } else if (sapFault) {",
+              "        notWritten();",
+              "        report(false, 'SAP PRD refused (not written): ' + (faultText(result) || plain(result)).slice(0, 300));",
+              "    } else {",
+              "        unknown('unrecognised result: ' + plain(result).slice(0, 200));",
+              "    }",
+              "} else if (code >= 500 && /\\(401\\)|Unauthorized/i.test(body)) {",
+              "    clear('sapPrdPassword');",
+              "    loginFailed();",
+              "    notWritten();",
+              "    report(false, 'STOP: SAP PRD rejected sapPrdUser/sapPrdPassword (401, reported as a gateway fault); nothing written. '",
+              "        + 'sapPrdPassword was cleared');",
+              "} else if (code >= 500 && /ActionNotSupported|ContractFilter/i.test(body)) {",
+              "    notWritten();",
+              "    report(false, 'prod-fo-gateway did not recognise the SOAPAction (SAP not called): delete any SOAPAction row in Headers; the script adds it');",
+              "} else if (code >= 500 || /<(?:\\w+:)?Fault[\\s>]/.test(body)) {",
+              "    unknown('prod-fo-gateway error HTTP ' + code + ': ' + (faultText(body) || plain(body)).slice(0, 200));",
+              "} else {",
+              "    unknown('HTTP ' + code + ' without D365FoWorkOrderInboundSAPResult: ' + plain(body).slice(0, 200));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<!--\n  วาง XML WorkOrderUpdate ของใบงานจริงที่จะส่งเข้า SAP PRD แทนข้อความนี้ทั้งหมด (ลบบรรทัดคอมเมนต์นี้ออกด้วย)\n  ต้องขึ้นต้นด้วย <soapenv:Envelope xmlns:sen=\"http://pi.coca-cola.com.th/tntl_i_processworkorder/sendfromnav/\" ...>\n  และมี <sen:FTD_INB_WORK_ORDER> ... <ORDERID>เลข 12 หลัก</ORDERID> ...\n-->\n",
+          "options": {
+            "raw": {
+              "language": "xml"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{foGatewayUrl}}/D365FoService.svc",
+          "host": [
+            "{{foGatewayUrl}}"
+          ],
+          "path": [
+            "D365FoService.svc"
+          ]
+        },
+        "description": "⚠️ **เขียนข้อมูลจริงเข้า SAP PRD (pbx)** — ใช้ปุ่ม **Send เท่านั้น** (ห้าม Runner / Flows / Monitors)\n\n1. ลบข้อความใน Body ทั้งหมด แล้ววาง XML WorkOrderUpdate ของใบงานจริง\n2. ตั้ง `confirmOrderId` = ORDERID ใน Body + `@` + เวลาตอนนี้ HHmm เช่น `000012345678@1432` (ใช้ได้ 10 นาที, ล้างเองหลังส่ง)\n3. กด Send ครั้งเดียว แล้วอ่าน Test Results\n4. ปิดแท็บ → **Don't save** (Body มีข้อมูลลูกค้า/ช่างของใบงานจริง)\n\nPre-request script ห่อ XML เป็น envelope ของ prod-fo-gateway ให้เอง: `soapBodySap` = base64(XML) · `resouceSap` = base64(`sapPrdUrl|sapPrdUser|sapPrdPassword`) · SOAPAction `D365FoWorkOrderInboundSAP` — **ห้ามเพิ่ม header SOAPAction เอง**\n\n| ผลใน Test Results | แปลว่า | ทำต่อ |\n|---|---|---|\n| `ACCEPTED: SAP PRD accepted ORDERID …` | SAP PRD รับแล้ว (มาจาก `EX_INB_ORDER_RET`) | จบ |\n| `SAP PRD refused (not written): …` | SAP ตอบ fault ของตัวเอง — ไม่ได้เขียน | แก้ข้อมูลตามข้อความก่อน ส่งซ้ำ XML เดิมก็ได้ผลเดิม |\n| `OUTCOME UNKNOWN …` | ไม่รู้ว่า SAP รับหรือไม่ (gateway error / timeout / ไม่มี response) | **ห้ามส่งซ้ำ** ตรวจใบงานใน SAP PRD (IW33) หรือให้ TNT ดู SXMB_MONI ก่อน |\n| `SAP answered for ORDERID X, not Y` | SAP ตอบเลขอื่น — ยืนยันไม่ได้ | ห้ามส่งซ้ำ ตรวจใน SAP |\n| `STOP: … (401)` | รหัสผิด (IIS หรือ SAP) — ระบบล้างช่องรหัสให้แล้ว | **ห้ามกดซ้ำ** พิมพ์รหัสที่ถูกแล้วส่งครั้งเดียว |\n| `NOT SENT: …` | ตัวกันไม่ให้ส่ง — ไม่มีอะไรออกจากเครื่อง | อ่านเหตุผลแล้วแก้ |\n\nกด Send แล้วไม่มี response = ถูกบล็อก → ดูเหตุผลใน Test Results, Console (Ctrl+Alt+C) หรือตัวแปร `lastResult`\n"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "foGatewayUrl",
+      "value": "https://prod-fo-gateway.bevproasia.com",
+      "type": "string",
+      "description": "prod-fo-gateway (IIS บน VM 20.33.118.76) — script ยอมรับค่านี้ค่าเดียว"
+    },
+    {
+      "key": "foGatewayUser",
+      "value": "innovation",
+      "type": "string",
+      "description": "user IIS (Basic auth) ของ prod-fo-gateway"
+    },
+    {
+      "key": "foGatewayPassword",
+      "value": "",
+      "type": "string",
+      "description": "local value เท่านั้น — ห้าม Share / Secure"
+    },
+    {
+      "key": "sapPrdUrl",
+      "value": "",
+      "type": "string",
+      "description": "URL เต็มจาก F&O Prod → SAP End Point → Work Order inbound SAP (https://pbx…?…interface=WorkOrderUpdate_Out…)"
+    },
+    {
+      "key": "sapPrdUser",
+      "value": "",
+      "type": "string",
+      "description": "บัญชี SAP PRD ที่ F&O Prod ใช้"
+    },
+    {
+      "key": "sapPrdPassword",
+      "value": "",
+      "type": "string",
+      "description": "local value เท่านั้น — ห้าม Share / Secure · ผิดหลายครั้ง = บัญชีที่ F&O Prod ใช้ถูกล็อก"
+    },
+    {
+      "key": "confirmOrderId",
+      "value": "",
+      "type": "string",
+      "description": "ORDERID ใน Body + @ + เวลาตอนนี้ HHmm เช่น 000012345678@1432 — ใช้ได้ 10 นาที ล้างเองหลังส่ง"
+    },
+    {
+      "key": "confirmResend",
+      "value": "",
+      "type": "string",
+      "description": "ORDERID ที่ตั้งใจส่งซ้ำภายใน 24 ชม. (ตรวจใน SAP แล้ว) — ล้างเองหลังใช้"
+    },
+    {
+      "key": "allowThaiPassword",
+      "value": "",
+      "type": "string",
+      "description": "ตั้งเป็น 1 เฉพาะเมื่อรหัสมีตัวอักษรไทยจริง"
+    },
+    {
+      "key": "lastResult",
+      "value": "",
+      "type": "string",
+      "description": "script เขียนให้: ผลหรือเหตุผลที่ไม่ส่งล่าสุด"
+    },
+    {
+      "key": "lastSentOrderId",
+      "value": "",
+      "type": "string",
+      "description": "script เขียนให้: ORDERID ที่ส่งจริงล่าสุด (ตัวกันส่งซ้ำ 24 ชม.)"
+    },
+    {
+      "key": "lastSentAt",
+      "value": "",
+      "type": "string",
+      "description": "script เขียนให้: เวลาที่ส่ง (ms)"
+    }
+  ]
+}

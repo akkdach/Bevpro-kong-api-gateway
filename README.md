@@ -161,6 +161,12 @@ bash scripts/load-test.sh <server-ip> <jwt-token>
 | `/health` | OneLake Middleware (:3005) | 200/min | Public |
 | `/v1/main/*` | Main C# API (:5000) | 200/min | — |
 | `/v1/safety/*` | Safety API (:5174) | 200/min | — |
+| `/uat/*` | BEVProAPI UAT (`service.bevproasia.com:5001`) → `/api/v1/*` (route `mb-uat-any`) | — | **JWT (Kong)** · รับ `/uat/X`, `/uat/api/X`, `/uat/api/v1/X` · public 8 เส้น (login ฯลฯ) ไม่มี JWT — ดู `USAGE.md` |
+| `/uat/api/v2/*` (`/uat/v2/*` ก็ได้) | BEVProAPI UAT → `/api/v2/*` (route `mb-uat-v2`, service `bevpro-uat-v2` timeout 180s) | — | **JWT (Kong)** · แอปช่างสาย SIM · regex_priority 50 ชนะ `/uat/*` · เพิ่ม 2026-10-29 |
+| `/uat/api/DisplayImage/*` (`/uat/DisplayImage/*` ก็ได้) | BEVProAPI UAT → `/api/DisplayImage/*` (route `mb-uat-displayimage`) | — | Public — แอปโหลดรูปไม่แนบ token · GET/HEAD/OPTIONS · เพิ่ม 2026-10-29 |
+| `/prod/*` | BEVProAPI PROD (`service.bevproasia.com`) → `/api/v1/*` (route `mb-prod-any`) | 2000/min/consumer | **JWT (Kong)** · รับ `/prod/X`, `/prod/api/X`, `/prod/api/v1/X` · public 8 เส้นชุดเดียวกับ uat — ดู `USAGE.md` |
+| `/prod/api/v2/*` (`/prod/v2/*` ก็ได้) | BEVProAPI PROD → `/api/v2/*` (route `mb-prod-v2`, service `bevpro-prod-v2` timeout 180s) | 2000/min/consumer | **JWT (Kong)** · regex_priority 50 ชนะ `/prod/*` · เพิ่ม 2026-10-30 — ณ วันที่สร้าง backend PROD ยังไม่มี `/api/v2` (Swagger 0 path, ได้ 404) ใช้ได้เมื่อ backend deploy v2 |
+| `/prod/api/DisplayImage/*` (`/prod/DisplayImage/*` ก็ได้) | BEVProAPI PROD → `/api/DisplayImage/*` (route `mb-prod-displayimage`) | global | Public — เหมือน `/api/DisplayImage` เดิม · GET/HEAD/OPTIONS · เพิ่ม 2026-10-30 |
 | `/sims-uat/*` | BEVPRO SIMS UAT (`bevpro-sims-uat.azurewebsites.net`) | 200/min | SIMS ตรวจเอง ไม่มี JWT ของ Kong · `integrations/mobile/*` = OAuth Bearer · `integrations/sap/*` = SOAP XML + Basic auth · http และ https (เปิด http 2026-09-17 — ขา http ไม่เข้ารหัส) |
 | `POST /sims-uat/api/v1/integrations/sap/service-orders` | BEVPRO SIMS UAT — route แยก `sims-uat-sap-service-orders` | 200/min | SOAP XML + Basic auth (SAP ส่งใบงานเข้า SIMS) · route เฉพาะ ชนะ `/sims-uat/*` เพราะ path ยาวกว่า |
 | `/d365fo/*` | D365 F&O SOAP gateway (`fo-gateway.bevproasia.com` = IIS บน VM WebApplication) | ไม่จำกัด | **https เท่านั้น** · ยังไม่มี auth ที่ Kong — เฟสถัดไปใส่ basic-auth plugin · ใช้แทนการเรียก `http://fo-gateway...` ตรง (เดิมไม่เข้ารหัส) · สร้างด้วย `scripts/add-d365fo-route.sh` |
